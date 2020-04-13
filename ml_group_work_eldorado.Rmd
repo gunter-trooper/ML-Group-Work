@@ -15,16 +15,19 @@ library(tidyverse)
 url_r <- "https://raw.githubusercontent.com/gunter-trooper/ML-Group-Work/master/Machine-learning-databases/winequality-red.csv"
 winequality_red <- read_delim(url_r,";", escape_double = FALSE, trim_ws = TRUE)
 names(winequality_red)<-str_replace_all(names(winequality_red), c(" " = "." , "," = "" ))
-winequality_red$type <- "red"
+winequality_red$col <- "red"
 
 url_w <- "https://raw.githubusercontent.com/gunter-trooper/ML-Group-Work/master/Machine-learning-databases/winequality-white.csv"
 winequality_white <- read_delim(url_w,";", escape_double = FALSE, trim_ws = TRUE)
 names(winequality_white)<-str_replace_all(names(winequality_white), c(" " = "." , "," = "" ))
-winequality_white$type <- "white"
+winequality_white$col <- "white"
 
 
 winequality <- bind_rows(winequality_red,winequality_white)
-winequality$type <- as.factor(winequality$type)
+winequality$col <- as.factor(winequality$col)
+
+
+
 ```
 
 ## R Markdown
@@ -39,9 +42,7 @@ hist(winequality$quality)
 boxplot(winequality$quality ~ winequality$type)
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
 
 ```{r wine2}
 library(splines)
@@ -60,18 +61,19 @@ plot(gam.1, residuals = TRUE, cex = 2)
 ```
 
 
+## Tree's
 
 
 ```{r wine4}
 library(ISLR)
-library(tree)
+library(rpart)
+library(rattle)
 
-wine_tree <-  tree(quality ~ .,data = winequality)
-
-plot(wine_tree)
-text(wine_tree, cex=0.75) # cex: set character size to 0.75
+wine_tree <-  rpart(quality ~ col ,data = winequality)
 
 summary(wine_tree)
+
+fancyRpartPlot(wine_tree,sub = "")
 ```
 
 
