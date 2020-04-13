@@ -8,7 +8,6 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 rstudioapi::getActiveDocumentContext
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 library(tidyverse)
 
@@ -22,7 +21,7 @@ names(winequality_red)<-str_replace_all(names(winequality_red), c(" " = "." , ",
 
 
 
-```{r wine}
+```{r wine1}
 winequality_red %>% summary()
 fit <- lm(quality ~ .,data = winequality_red)
 summary(fit)
@@ -33,7 +32,7 @@ hist(winequality_red$quality)
 
 You can also embed plots, for example:
 
-```{r wine,echo = True}
+```{r wine2}
 library(splines)
 lm.regressionSplines <- lm(quality ~ bs(alcohol, df = 3), data = winequality_red)
 summary(lm.regressionSplines)
@@ -42,7 +41,7 @@ plot(lm.regressionSplines)
 
 
 
-```{r wine,echo = True}
+```{r wine3}
 library(mgcv)
 gam.1 <- gam(quality ~ s(alcohol) + s(sulphates) + s(pH), data = winequality_red)
 summary(gam.1)
@@ -52,7 +51,7 @@ plot(gam.1, residuals = TRUE, cex = 2)
 
 
 
-```{r wine,echo = True}
+```{r wine4}
 library(ISLR)
 library(tree)
 
@@ -61,6 +60,7 @@ wine_tree <-  tree(quality ~ . ,data = winequality_red)
 plot(wine_tree)
 text(wine_tree, cex=0.75) # cex: set character size to 0.75
 
+summary(wine_tree)
 ```
 
 
