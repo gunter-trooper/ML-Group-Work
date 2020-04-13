@@ -12,9 +12,19 @@ rstudioapi::getActiveDocumentContext
 library(tidyverse)
 
 
-url <- "https://raw.githubusercontent.com/gunter-trooper/ML-Group-Work/master/Machine-learning-databases/winequality-red.csv"
-winequality_red <- read_delim(url,";", escape_double = FALSE, trim_ws = TRUE)
+url_r <- "https://raw.githubusercontent.com/gunter-trooper/ML-Group-Work/master/Machine-learning-databases/winequality-red.csv"
+winequality_red <- read_delim(url_r,";", escape_double = FALSE, trim_ws = TRUE)
 names(winequality_red)<-str_replace_all(names(winequality_red), c(" " = "." , "," = "" ))
+winequality_red$type <- "red"
+
+url_w <- "https://raw.githubusercontent.com/gunter-trooper/ML-Group-Work/master/Machine-learning-databases/winequality-white.csv"
+winequality_white <- read_delim(url_w,";", escape_double = FALSE, trim_ws = TRUE)
+names(winequality_white)<-str_replace_all(names(winequality_white), c(" " = "." , "," = "" ))
+winequality_white$type <- "white"
+
+
+winequality <- bind_rows(winequality_red,winequality_white)
+winequality$type <- as.factor(winequality$type)
 ```
 
 ## R Markdown
@@ -22,10 +32,11 @@ names(winequality_red)<-str_replace_all(names(winequality_red), c(" " = "." , ",
 
 
 ```{r wine1}
-winequality_red %>% summary()
-fit <- lm(quality ~ .,data = winequality_red)
+winequality %>% summary()
+fit <- lm(quality ~ .,data = winequality)
 summary(fit)
-hist(winequality_red$quality)
+hist(winequality$quality)
+boxplot(winequality$quality ~ winequality$type)
 ```
 
 ## Including Plots
@@ -55,7 +66,7 @@ plot(gam.1, residuals = TRUE, cex = 2)
 library(ISLR)
 library(tree)
 
-wine_tree <-  tree(quality ~ . ,data = winequality_red)
+wine_tree <-  tree(quality ~ .,data = winequality)
 
 plot(wine_tree)
 text(wine_tree, cex=0.75) # cex: set character size to 0.75
