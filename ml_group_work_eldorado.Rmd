@@ -11,22 +11,7 @@ rstudioapi::getActiveDocumentContext
 
 library(tidyverse)
 
-
-url_r <- "https://raw.githubusercontent.com/gunter-trooper/ML-Group-Work/master/Machine-learning-databases/winequality-red.csv"
-winequality_red <- read_delim(url_r,";", escape_double = FALSE, trim_ws = TRUE)
-names(winequality_red)<-str_replace_all(names(winequality_red), c(" " = "." , "," = "" ))
-winequality_red$col <- "red"
-
-url_w <- "https://raw.githubusercontent.com/gunter-trooper/ML-Group-Work/master/Machine-learning-databases/winequality-white.csv"
-winequality_white <- read_delim(url_w,";", escape_double = FALSE, trim_ws = TRUE)
-names(winequality_white)<-str_replace_all(names(winequality_white), c(" " = "." , "," = "" ))
-winequality_white$col <- "white"
-
-
-winequality <- bind_rows(winequality_red,winequality_white)
-winequality$col <- as.factor(winequality$col)
-
-
+house_data <- read_csv("C:/github/ML-Group-Work/Machine-learning-databases/house_data.csv")
 
 ```
 
@@ -35,18 +20,22 @@ winequality$col <- as.factor(winequality$col)
 
 
 ```{r wine1}
-winequality %>% summary()
-fit <- lm(quality ~ .,data = winequality)
+
+fit <- lm(price ~ num_rooms ,data = house_data)
+
 summary(fit)
-hist(winequality$quality)
-boxplot(winequality$quality ~ winequality$type)
+
+plot(house_data$num_rooms,house_data$price)
+abline(fit)
+
+
 ```
 
 
 
 ```{r wine2}
 library(splines)
-lm.regressionSplines <- lm(quality ~ bs(alcohol, df = 3), data = winequality_red)
+lm.regressionSplines <- lm(price ~ bs(num_rooms, df = 3), data = house_data)
 summary(lm.regressionSplines)
 plot(lm.regressionSplines)
 ```
@@ -55,8 +44,9 @@ plot(lm.regressionSplines)
 
 ```{r wine3}
 library(mgcv)
-gam.1 <- gam(quality ~ s(alcohol) + s(sulphates) + s(pH), data = winequality_red)
+gam.1 <- gam(price ~ bs(num_rooms, df = 3), data = house_data)
 summary(gam.1)
+
 plot(gam.1, residuals = TRUE, cex = 2)
 ```
 
@@ -66,14 +56,15 @@ plot(gam.1, residuals = TRUE, cex = 2)
 
 ```{r wine4}
 library(ISLR)
-library(rpart)
-library(rattle)
+library(tree)
 
-wine_tree <-  rpart(quality ~ col ,data = winequality)
+wine_tree <-  tree(price ~ . ,data = house_data)
 
 summary(wine_tree)
 
-fancyRpartPlot(wine_tree,sub = "")
+plot(wine_tree)
+text(wine_tree, use.n=TRUE, all=TRUE, cex=.8)
+
 ```
 
 
