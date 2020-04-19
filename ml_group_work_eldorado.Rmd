@@ -32,9 +32,6 @@ house_data <- house_data %>% select(object_type_name,
 ```
 
 
-
-
-
 ### Description of the used data set
 
 The data set contains the following predictors: 
@@ -50,8 +47,6 @@ The data set contains the following predictors:
 - number_of_workplaces_in_hectare     count data
 - population_in_hectare               count data
 - price                               continues
-
-
 
 
 ### Graphical interpretation and simple linear modeling
@@ -100,7 +95,7 @@ library(mgcv)
 gam.1 <- gam(price ~ s(living_area) +  s(travel_time_private_transport) + s(travel_time_public_transport) + object_type_name + num_rooms, data = house_data)
 summary(gam.1)
 
-plot(gam.1, residuals = TRUE, cex = 2)
+plot(gam.1)
 ```
 
 
