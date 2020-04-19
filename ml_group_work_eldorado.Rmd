@@ -1,6 +1,6 @@
 ---
-title: "ml_groopwork_eldorado"
-author: "Stephan Wernli"
+title: "Applied Maschine Learning 01 Group Work"
+author: "Stephan Wernli, Jonas Zürcher"
 date: "13 April 2020"
 output: html_document
 ---
@@ -13,45 +13,102 @@ library(tidyverse)
 
 house_data <- read_csv("C:/github/ML-Group-Work/Machine-learning-databases/house_data.csv")
 
+house_data$object_type_name <- as.factor(house_data$object_type_name)
+house_data$num_rooms <- as.integer(house_data$num_rooms)
+
+
+house_data <- house_data %>% select(object_type_name,
+                                    build_year,
+                                    living_area,
+                                    num_rooms,
+                                    travel_time_private_transport,
+                                    travel_time_public_transport,
+                                    number_of_buildings_in_hectare,
+                                    number_of_apartments_in_hectare,
+                                    number_of_workplaces_in_hectare,
+                                    population_in_hectare,
+                                    price)
+
 ```
 
-## R Markdown
 
 
 
-```{r wine1}
 
-fit <- lm(price ~ num_rooms ,data = house_data)
+### Description of the used data set
 
-summary(fit)
+The data set contains the following predictors: 
 
-plot(house_data$num_rooms,house_data$price)
-abline(fit)
+- object_type_name                    categorical                  
+- build_year                          continues
+- living_area                         continues
+- num_rooms                           count data
+- travel_time_private_transport       continues
+- travel_time_public_transport        continues 
+- number_of_buildings_in_hectare      count data
+- number_of_apartments_in_hectare     count data
+- number_of_workplaces_in_hectare     count data
+- population_in_hectare               count data
+- price                               continues
 
 
+
+
+### Graphical interpretation and simple linear modeling
+
+
+```{r 1}
+
+library(ggplot2)
+qplot(y = price, x = build_year,data = house_data,facets = ~ object_type_name)
+
+ggplot(house_data, aes(x=object_type_name, y=price)) +
+geom_boxplot()
 ```
 
 
+### RegressionSplines
 
-```{r wine2}
+The data set contains the following predictors: 
+
+
+
+```{r 2}
 library(splines)
-lm.regressionSplines <- lm(price ~ bs(num_rooms, df = 3), data = house_data)
+lm.regressionSplines <- lm(price ~ bs(living_area, df = 3), data = house_data)
 summary(lm.regressionSplines)
 plot(lm.regressionSplines)
 ```
 
+### Generalised Additiv Models
 
 
-```{r wine3}
+```{r gam}
 library(mgcv)
-gam.1 <- gam(price ~ bs(num_rooms, df = 3), data = house_data)
+
+gam.1 <- gam(price ~ s(living_area) +  s(travel_time_private_transport) + s(travel_time_public_transport) + object_type_name + num_rooms, data = house_data)
+summary(gam.1)
+
+plot(gam.1, residuals = TRUE, cex = 2)
+```
+
+### Generalised linear models
+
+```{r glm}
+library(mgcv)
+
+gam.1 <- gam(price ~ s(living_area) +  s(travel_time_private_transport) + s(travel_time_public_transport) + object_type_name + num_rooms, data = house_data)
 summary(gam.1)
 
 plot(gam.1, residuals = TRUE, cex = 2)
 ```
 
 
-## Tree's
+
+
+
+
+### Tree's
 
 
 ```{r wine4}
@@ -63,13 +120,13 @@ wine_tree <-  tree(price ~ . ,data = house_data)
 summary(wine_tree)
 
 plot(wine_tree)
-text(wine_tree, use.n=TRUE, all=TRUE, cex=.8)
+text(wine_tree, all=TRUE, cex=.8)
 
 ```
 
 
 
-
+### Support vector maschines 
 
 
 
