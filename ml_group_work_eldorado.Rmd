@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 rstudioapi::getActiveDocumentContext
 
 library(tidyverse)
+library(e1071)  
 
 house_data <- read_csv("C:/github/ML-Group-Work/Machine-learning-databases/house_data.csv")
 
@@ -123,6 +124,54 @@ text(wine_tree, all=TRUE, cex=.8)
 
 ### Support vector maschines 
 
+```{r SVM1}
 
+
+#To Do separation still not working right 
+house_data <- house_data %>% filter(object_type_name ==  "Einfamilienhaus"  | object_type_name ==  "Wohnung")
+house_data <- house_data %>%  droplevels()
+house_data$object_type_name %>%  unique()
+
+## 75% of the sample size
+smp_size <- floor(0.5 * nrow(house_data))
+
+## set the seed to make your partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(house_data)), size = smp_size)
+
+house_train <- house_data[train_ind, ]
+house_test <- house_data[-train_ind, ]
+
+
+
+
+
+
+ggplot(house_data, aes(x=living_area, y=log(price))) + geom_point()
+
+
+number_of_observations <- 5000
+
+
+cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
+
+svm.models <- tune(
+  svm,
+  object_type_name ~ price + living_area + num_rooms,
+  data = house_train %>% top_n(number_of_observations),
+  kernel = "radial",
+  ranges = list(cost = cost_range),
+  scale = TRUE)
+
+svm.models <- svm.models$best.model
+
+summary(svm.models)
+
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price ~ living_area)
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price ~ num_rooms)
+
+table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
+
+```
 
 
