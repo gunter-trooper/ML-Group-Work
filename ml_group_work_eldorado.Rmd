@@ -12,7 +12,7 @@ rstudioapi::getActiveDocumentContext
 library(tidyverse)
 library(e1071)  
 
-house_data <- read_csv("C:/github/ML-Group-Work/Machine-learning-databases/house_data.csv")
+house_data <- read_csv("./Machine-learning-databases/house_data.csv")
 
 house_data$object_type_name <- as.factor(house_data$object_type_name)
 house_data$num_rooms <- as.integer(house_data$num_rooms)
