@@ -2,11 +2,48 @@
 title: "Applied Maschine Learning 01 Group Work"
 author: "Stephan Wernli, Jonas Zürcher"
 date: "13 April 2020"
-output: html_document
+output:
+html_document: 
+toc: true
+  
 ---
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
+library(tidyverse)
+library(e1071)  
+
+house_data <- read_csv("./Machine-learning-databases/house_data.csv")
+
+house_data$object_type_name <- as.factor(house_data$object_type_name)
+house_data$num_rooms <- as.integer(house_data$num_rooms)
+
+
+house_data <- house_data %>% select(object_type_name,
+                                    build_year,
+                                    living_area,
+                                    zipcode,
+                                    municipality_name,
+                                    num_rooms,
+                                    travel_time_private_transport,
+                                    travel_time_public_transport,
+                                    number_of_buildings_in_hectare,
+                                    number_of_apartments_in_hectare,
+                                    number_of_workplaces_in_hectare,
+                                    population_in_hectare,
+                                    water_percentage_1000,
+                                    price)
+                                    
+
+```
+
+#old
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+	eval = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	include = FALSE
+)
 rstudioapi::getActiveDocumentContext
 
 library(tidyverse)
@@ -40,20 +77,25 @@ The data set contains the following predictors:
 - object_type_name                    categorical                  
 - build_year                          continues
 - living_area                         continues
-- num_rooms                           count data
+- zipcode                             categorical
+- municipality_name                   categorical
+- num_rooms                           count data/categorical
 - travel_time_private_transport       continues
 - travel_time_public_transport        continues 
 - number_of_buildings_in_hectare      count data
 - number_of_apartments_in_hectare     count data
 - number_of_workplaces_in_hectare     count data
 - population_in_hectare               count data
+- water_percentage_1000               count data
 - price                               continues
+
+
 
 
 ### Graphical interpretation and simple linear modeling
 
 
-```{r 1}
+```{r 1, echo=TRUE}
 
 library(ggplot2)
 qplot(y = price, x = build_year,data = house_data,facets = ~ object_type_name)
@@ -99,7 +141,7 @@ plot(gam.1, residuals = TRUE, cex = 2)
 ### Tree's
 
 
-```{r wine4}
+```{r wine4, echo=TRUE}
 library(ISLR)
 library(tree)
 
