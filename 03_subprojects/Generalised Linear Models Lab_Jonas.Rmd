@@ -1,0 +1,135 @@
+---
+title: "Untitled"
+author: "Jonas Zürcher, Stephan Wernli, Luca Casuscelli, Dominik Vasquez"
+date: "22 4 2020"
+output: html_document
+---
+# General Linear models
+
+Generalised Linear Models (GLM) are a group of models. The Poisson, the Binomial, the Binary and the Multinominal models are all members of GLM. They are an extension of the Linear Model to deal with particular types of data.They have in common that both  assume a specific distribution of the data and use a link function for the model are perfect
+
+
+## Preparation
+First we prepare the house data for the analysis.
+We limited the data to entries with less than 15 rooms and more than zero. 
+Because a house with zero rooms doesn't make sense. Also Rooms with 15 rooms or more could be a typo. A typo could be 15 rooms instead of 1.5 rooms. 
+We produce three groups for the room count data:
+"1. Single room No." are all entries with only 1 room
+"2. Family room No." are all entries with 2 to 8 rooms
+"3. Rich room No." are all entries with more than 8 rooms
+
+
+```{r}
+# Nur Gebäude mit 1-15 Räumen
+house_data.rooms<-house_data %>%
+  filter(house_data$num_rooms<15 &house_data$num_rooms>0)
+
+# Using a group function to build groups of count data
+
+getgroup<-function(n) {
+   if(n == 1) {
+      "1. Single room No."
+    } else if(n > 1 & n<=8 ) {
+      "2. Family room No."
+    }else {
+      "3. Rich room No."
+    }
+}
+
+house_data.rooms$group_room<-sapply(house_data.rooms$num_rooms,getgroup)
+house_data.rooms$group_room<-as.factor(house_data.rooms$group_room)
+
+```
+
+## Boxplot
+
+Lets have a closer look a the data with a boxplot 
+
+```{r}
+ggplot(data=house_data.rooms,
+       mapping =aes(y=num_rooms,
+                    x=house_data.rooms$group_room)
+         ) +
+  geom_boxplot()+
+  xlab("group_rooms")
+```
+## Build a Linear model
+```{r}
+lm.rooms <- lm(num_rooms ~ group_room, data = house_data.rooms)
+round(coef(lm.rooms), digits = 1)
+```
+
+The estimates look good. We have 1 room for the Single room No., 4 rooms for the Family room No. and 9 for the Rich room No. 
+
+## Simulate data with the linear model
+
+Next step is to simulate new data
+```{r}
+set.seed(4)
+sim.data.rooms <- simulate(lm.rooms)
+NROW(sim.data.rooms)
+head(sim.data.rooms)
+tail(sim.data.rooms)
+
+ggplot(data=sim.data.rooms,
+       mapping =aes(y=sim_1,
+                    x=house_data.rooms$group_room)
+         ) +
+  geom_boxplot()+
+  xlab("group_rooms")
+```
+
+As we see in the simulated Data. There are Room counts below 1, which is not possible. Furthermore the variability doesn't increase with the mean value of the groups. 
+
+
+## Poisson Model 
+Similar to the cigarette example in the lesson, the rooms cant have a negative value. Therefore a normal linear regression is not the way to go. 
+
+```{r}
+glm.rooms<-glm(num_rooms ~ group_room,
+               family="poisson", 
+               data=house_data.rooms)
+summary(glm.rooms)
+```
+## Simulate Data with the poisson model and plot it
+
+```{r}
+set.seed(4)
+sim.data.rooms2 <- simulate(glm.rooms)
+NROW(sim.data.rooms2)
+head(sim.data.rooms2)
+tail(sim.data.rooms2)
+
+ggplot(data=sim.data.rooms2,
+       mapping =aes(y=sim_1,
+                    x=house_data.rooms$group_room)
+         ) +
+  geom_boxplot()+
+  xlab("group_rooms")
+```
+
+
+# Binary model
+We will try to identifie the object type by using the price, the number of rooms and living area. To perform a binomial analysis we limit the object types to two: "Wohnung" and "Einfamilienhaus".
+
+## Preparation
+First we prepate a dataset only containing only those two object types
+
+```{r}
+house_data_binary<-house_data.rooms%>%
+  filter(object_type_name=="Wohnung" | object_type_name=="Einfamilienhaus")
+```
+
+## 
+```{r}
+glm(object_type_name ~ price + num_rooms,
+family = "binomial",
+data = house_data_binary)
+
+ggplot(data = house_data_binary,
+mapping = aes(y = object_type_name,
+x = price)) +
+geom_point()
+```
+
+

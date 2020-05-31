@@ -1,0 +1,211 @@
+---
+title: "Untitled"
+author: "Jonas Zürcher, Stephan Wernli, Luca Casuscelli, Dominik Vasquez"
+date: "22 4 2020"
+output: html_document
+---
+# General Linear models
+
+Generalised Linear Models (GLM) are a group of models. The Poisson, the Binomial, the Binary and the Multinominal models are all members of GLM. They are an extension of the Linear Model to deal with particular types of data.They have in common that both  assume a specific distribution of the data and use a link function for the model are perfect
+
+
+## Preparation
+First we prepare the house data for the analysis.
+
+We produce three groups for the number_of_workplaces_in_hectare count data:
+"1. Low industrialized" are all entries with only 0-25 workplaces
+"2. Moderate industrialized" are all entries with 26 to 50 workplaces
+"3. Highly industrialized" are all entries with more than 50 workplaces
+
+
+```{r}
+
+house_data.glm.count<-house_data
+
+# Using a group function to build groups of count data
+
+getgroup<-function(n) {
+   if(n >= 0 & n<=25 ) {
+      "1. Low industrialized"
+    } else if(n > 25 & n<=50 ) {
+      "2. Moderate industrialized"
+    }else {
+      "3. Highly industrialized"
+    }
+}
+
+house_data.glm.count$group<-sapply(house_data$number_of_workplaces_in_hectare,getgroup)
+
+house_data.glm.count$group<-as.factor(house_data.glm.count$group)
+
+```
+
+## Boxplot
+
+Lets have a closer look a the data with a boxplot 
+
+```{r}
+ggplot(data=house_data.glm.count,
+       mapping =aes(y=house_data.glm.count$number_of_workplaces_in_hectare,
+                    x=house_data.glm.count$group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+## Build a Linear model
+
+```{r}
+lm.workplaces <- lm(number_of_workplaces_in_hectare ~ house_data.glm.count$group, data = house_data.glm.count)
+round(coef(lm.workplaces), digits = 1)
+```
+
+The estimates look good. We have 3 workplaces for low industrialized areas, 3 workplaces for moderated industrialzed areas and 73 workplaces for highly industrialzed areas
+
+## Simulate data with the linear model
+
+Next step is to simulate new data
+```{r}
+set.seed(4)
+sim.workplaces <- simulate(lm.workplaces)
+NROW(sim.workplaces)
+head(sim.workplaces)
+tail(sim.workplaces)
+
+ggplot(data=sim.workplaces,
+       mapping =aes(y=sim_1,
+                    x=house_data.glm.count$group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+As we see in the simulated Data. There are workplaces counts below zero, which is not possible. Furthermore the variability doesn't increase with the mean value of the groups. This needs improvment. The solution is to use a poisson model. 
+
+
+## Poisson Model 
+Similar to the cigarette example in the lesson, the workplaces cant have a negative value. Therefore a normal linear regression is not the way to go. 
+
+```{r}
+glm.workplaces<-glm(number_of_workplaces_in_hectare ~ group,
+               family="poisson", 
+               data=house_data.glm.count)
+summary(glm.workplaces)
+```
+## Simulate Data with the poisson model and plot it
+
+```{r}
+set.seed(4)
+sim.data.workplaces_2 <- simulate(glm.workplaces)
+NROW(sim.data.workplaces_2)
+head(sim.data.workplaces_2)
+tail(sim.data.workplaces_2)
+
+ggplot(data=sim.data.workplaces_2,
+       mapping =aes(y=sim_1,
+                    x=house_data.glm.count$group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+Now the simulated data looks way better. The variability increases with increasing count and there are now values below zero. 
+
+# Binomial model
+
+Our data doesn't have a entries with binomial data. Therefore we create a binomial data with the number of workplaces in a hectare. For this we assume the highest entry is the highest possible entry and therefore 100 %. All others entries are now transformed into a percentage value in respect to the maximal entry. Furthermore a failure column is produced by substract each value from the max value. This column will be need to build a binomial model. 
+
+```{r}
+house_data.glm.binomial<-house_data
+
+max(house_data.glm.binomial$number_of_workplaces_in_hectare)
+
+house_data.glm.binomial$workplace_coverage<-house_data.glm.binomial$number_of_workplaces_in_hectare/max(house_data.glm.binomial$number_of_workplaces_in_hectare)
+
+# Make a column with pseudo failure entries
+
+house_data.glm.binomial$failure<-max(house_data.glm.binomial$number_of_workplaces_in_hectare)-house_data.glm.binomial$number_of_workplaces_in_hectare
+```
+
+## First visualization
+
+Let plot the workplace coverage with the population in hectare together. 
+
+```{r}
+ggplot(data = house_data.glm.binomial,
+mapping = aes(y = workplace_coverage,
+x = house_data.glm.binomial$population_in_hectare)) +
+  geom_point(size=1)+
+  geom_smooth(method = "lm", se = FALSE) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1,col="grey")+
+  xlab("Population in hectare")+
+  ylab("Workplace coverage")
+```
+
+We see a slight positive trend in the plot. But we can't be happy yet. With the linear model fit we could get prediction values outside the range of 0 % and 100 % which is not possible. Even fitted values could lay outside this range. Therefore we need an other model. 
+
+## Improved model
+
+We will transform the data with the inverse logit function. With this function the values are always between 0 and 1. 
+
+```{r}
+glm.workplace_coverage<-glm(cbind(house_data.glm.binomial$number_of_workplaces_in_hectare,house_data.glm.binomial$failure)~population_in_hectare,family="binomial",data= house_data.glm.binomial)
+summary(glm.workplace_coverage)
+```
+
+## Simulate data with the impoved model 
+
+First we produce a dataframe with 100 predicted values with the new model. 
+
+```{r}
+new.data = data.frame(population_in_hectare = seq(0, 500, length.out = 100))
+new.data$pred.workplace_coverage <- predict(glm.workplace_coverage, newdata = new.data,
+                                 type = "response")
+```
+
+In the next step with plot the real data (red) together with the simulated data (black)
+
+```{r}
+ggplot(data = house_data.glm.binomial,
+mapping = aes(y = workplace_coverage,
+x = house_data.glm.binomial$population_in_hectare)) +
+  geom_point(col="red",size=1)+
+  geom_point(data = new.data,
+               mapping = aes(
+      y = pred.workplace_coverage,
+      x = population_in_hectare),size=1) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1, col="gray")+
+  xlab("Population in hectare")+
+  ylab("Workplace coverage")
+```
+
+
+# Binary model
+We will try to identifie the object type by using the price, the number of rooms and living area. To perform a binary analysis we limit the object types to two: "Wohnung" and "Einfamilienhaus".
+
+## Preparation
+First we prepate a dataset only containing only those two object types
+
+```{r}
+house_data.glm.binary<-house_data%>%
+  filter(object_type_name=="Wohnung" | object_type_name=="Einfamilienhaus")
+```
+
+## 
+```{r}
+glm(object_type_name ~ price + num_rooms,
+family = "binomial",
+data = house_data_binary)
+
+ggplot(data = house_data_binary,
+mapping = aes(y = object_type_name,
+x = price)) +
+geom_point()
+```
+
+
