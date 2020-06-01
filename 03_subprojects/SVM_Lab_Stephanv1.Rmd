@@ -9,7 +9,6 @@ library(e1071)
 
 house_data <- read_csv("../01_data/house_data.csv")
 house_data$object_type_name <- as.factor(house_data$object_type_name)
-house_data$num_rooms <- as.integer(house_data$num_rooms)
 house_data <- house_data %>% select(object_type_name,
                                     build_year,
                                     living_area,
@@ -64,24 +63,39 @@ house_test <- house_data[-train_ind, ]
 
 ```
 
-In a first step, the different levels of determination are now considered. 
+## Graphical analysis of the separating variables
 
-Logarithmic price and the living area
+The following plots should show how well the fed-in variables separate a classification of the two classes apartment and single family house.
+
+The first plot shows how the variable room numbers separate the two classes. 
+In this plot you can see that an apartment has less rooms than a family house. This fact could be used for a separation.
+Furthermore it is obvious that the number of rooms in the range up to 10 rooms cannot be used as a separation criterion.
 
 
 ```{r echo=FALSE}
-ggplot(house_data, aes(x=living_area, y=price.log)) + geom_point()
+ggplot(house_data, aes(y=num_rooms, x=object_type_name)) + geom_point()
 ```
 
+The second plot shows how the variable living area separates the two classes. 
+The plot shows that the apartments contain a much smaller living space. 
+The variable should therefore to a certain degree support a clean separation.
+However, it can also be seen that there is a certain overlap in the lower area of the living space. 
+the influence of this fact for the separation can not yet be estimated.
 
-Logarithmic price and number of rooms
 
 ```{r echo=FALSE}
-ggplot(house_data, aes(x=num_rooms, y=price.log)) + geom_point()
+ggplot(house_data, aes(y=living_area, x=object_type_name)) + geom_point()
 ```
 
 
+The last plot shows how far the classes can be distinguished by the logarithmic price.
+It can be seen that the price for both classes is distributed almost identically. 
+From a graphical point of view, the price is therefore only conditionally suitable for a separation.
 
+
+```{r echo=FALSE}
+ggplot(house_data, aes(y=price.log, x=object_type_name)) + geom_point()
+```
 
 Now that the data for the problem is prepared, we try to apply the SVM to it.
 in the following section three different kernels (linear,sigmoid,radial) are used, all of them having received the same date for classification.
@@ -89,6 +103,8 @@ in the following section three different kernels (linear,sigmoid,radial) are use
 
 
 ## SVM with linear kernel
+
+The following code block shows the configuration of SVM with linear kernel.
 
 
 ```{r results = FALSE , message=FALSE, warning=FALSE}
@@ -127,6 +143,9 @@ table(predict = predict(svm.models, house_train),truth = house_train$object_type
 ## SVM with sigmoid kernel
 
 
+The following code block shows the configuration of SVM with sigmoid kernel.
+
+
 ```{r results = FALSE , message=FALSE, warning=FALSE}
 number_of_observations <- 10000
 cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
@@ -161,6 +180,7 @@ table(predict = predict(svm.models, house_train),truth = house_train$object_type
 
 ## SVM with radial kernel
 
+The following code block shows the configuration of SVM with radial kernel.
 
 ```{r results = FALSE , message=FALSE, warning=FALSE}
 number_of_observations <- 1000
@@ -197,11 +217,9 @@ table(predict = predict(svm.models, house_train),truth = house_train$object_type
 
 
 
-
-
 ## Conclusion 
 
-we see that the SVM using the sigmoid kernel has the best classification rate.
+We see that the SVM using the sigmoid kernel has the best classification rate.
 The other SVMs using the linear and radial kernel could not provide a sufficient separation layer
 
 It is not possible to differentiate clearly between an apartment and a single-family house.
