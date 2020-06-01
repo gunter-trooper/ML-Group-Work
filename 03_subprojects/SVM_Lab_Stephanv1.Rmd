@@ -91,7 +91,7 @@ in the following section three different kernels (linear,sigmoid,radial) are use
 ## SVM with linear kernel
 
 
-```{r results = FALSE , message=FALSE}
+```{r results = FALSE , message=FALSE, warning=FALSE}
 number_of_observations <- 200
 cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
 svm.models <- tune(
@@ -107,11 +107,11 @@ summary(svm.models)
 
 
 ```
-```{r echo=FALSE}
+```{r echo=FALSE , message=FALSE, warning=FALSE}
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
 ```
 
-```{r echo=FALSE}
+```{r echo=FALSE , message=FALSE, warning=FALSE}
 
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
 
@@ -127,7 +127,7 @@ table(predict = predict(svm.models, house_train),truth = house_train$object_type
 ## SVM with sigmoid kernel
 
 
-```{r results = FALSE , message=FALSE}
+```{r results = FALSE , message=FALSE, warning=FALSE}
 number_of_observations <- 10000
 cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
 svm.models <- tune(
@@ -142,11 +142,13 @@ summary(svm.models)
 
 
 ```
-```{r echo=FALSE}
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
 ```
 
-```{r echo=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
 
@@ -160,7 +162,7 @@ table(predict = predict(svm.models, house_train),truth = house_train$object_type
 ## SVM with radial kernel
 
 
-```{r results = FALSE , message=FALSE}
+```{r results = FALSE , message=FALSE, warning=FALSE}
 number_of_observations <- 1000
 cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
 svm.models <- tune(
@@ -178,11 +180,11 @@ summary(svm.models)
 
 ```
 
-```{r echo=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
 ```
 
-```{r echo=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
 
