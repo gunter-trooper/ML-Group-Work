@@ -41,9 +41,9 @@ house_data$num_rooms.fac <- factor(house_data$num_rooms)
 The following chapter covers Support Vectore Machines. These are used to handle classification problems with a margin between separation points and their support vectors. 
 In the following case, an attempt is made to classify the type of the residential object using price, number of rooms and  living area as predictors.
 
+to improve the initial state of classification, only two classes are provided to the SVM. In addition, outliers in terms of the size of the living area and the number of rooms have been restricted.
 
-
-```{r }
+```{r results = 'hide'}
 
 
 house_data <- house_data %>% filter(object_type_name ==  "Einfamilienhaus"|object_type_name ==  "Wohnung")
@@ -62,19 +62,36 @@ train_ind <- sample(seq_len(nrow(house_data)), size = smp_size)
 house_train <- house_data[train_ind, ]
 house_test <- house_data[-train_ind, ]
 
+```
 
+In a first step, the different levels of determination are now considered. 
+
+Logarithmic price and the living area
+
+
+```{r echo=FALSE}
 ggplot(house_data, aes(x=living_area, y=price.log)) + geom_point()
+```
+
+
+Logarithmic price and number of rooms
+
+```{r echo=FALSE}
 ggplot(house_data, aes(x=num_rooms, y=price.log)) + geom_point()
 ```
-After the data has been provided, it is optimized by filters. 
-The aim of the optimization is to provide the SVM with a better starting point.
+
+
+
+
 Now that the data for the problem is prepared, we try to apply the SVM to it.
-In the first case a linear kernel will be applied.
+in the following section three different kernels (linear,sigmoid,radial) are used, all of them having received the same date for classification.
+
+
 
 ## SVM with linear kernel
 
 
-```{r }
+```{r results = FALSE , message=FALSE}
 number_of_observations <- 200
 cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
 svm.models <- tune(
@@ -89,15 +106,28 @@ svm.models <- svm.models$best.model
 summary(svm.models)
 
 
+```
+```{r echo=FALSE}
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
+```
+
+```{r echo=FALSE}
+
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
+
+```
+
+```{r}
+
 table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
 ```
+
+
 
 ## SVM with sigmoid kernel
 
 
-```{r}
+```{r results = FALSE , message=FALSE}
 number_of_observations <- 10000
 cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
 svm.models <- tune(
@@ -111,16 +141,26 @@ svm.models <- svm.models$best.model
 summary(svm.models)
 
 
+```
+```{r echo=FALSE}
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
-plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
-table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
 ```
 
+```{r echo=FALSE}
+
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
+
+```
+
+```{r}
+
+table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
+```
 
 ## SVM with radial kernel
 
 
-```{r }
+```{r results = FALSE , message=FALSE}
 number_of_observations <- 1000
 cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
 svm.models <- tune(
@@ -135,12 +175,32 @@ svm.models <- svm.models$best.model
 summary(svm.models)
 
 
+
+```
+
+```{r echo=FALSE}
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
+```
+
+```{r echo=FALSE}
+
 plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
+
+```
+
+```{r}
+
 table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
 ```
 
+
+
+
+
 ## Conclusion 
+
+we see that the SVM using the sigmoid kernel has the best classification rate.
+The other SVMs using the linear and radial kernel could not provide a sufficient separation layer
 
 It is not possible to differentiate clearly between an apartment and a single-family house.
 Therefore, the SVM is not suitable for classification in this case.
