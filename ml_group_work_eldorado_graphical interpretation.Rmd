@@ -1,0 +1,131 @@
+---
+title: "MPM Graphical Overview"
+author: "Luca Casuscelli"
+date: "23/05/2020"
+output:
+  html_document:
+    df_print: paged
+---
+#Introduction
+In this chapter, we want to get a first understanding of the data we have. In order to do so, we will take a graphical approach in this chapter. 
+
+Using a graphical approach is an efficient and very helpfull way to receive a first understanding on example the distribution of the data. 
+
+As we would like to understand, which variables do have the biggest impact on house prices, the variable *price* is our dependent variable $Y$ against which, we would like to test.
+
+#Import Data
+As a first step, we must import the data.
+```{r}
+house_data <- read.csv("C:/Users/lucac/OneDrive/Dokumente/GitHub/ML-Group-Work/Machine-learning-databases/house_data.csv")
+```
+
+In order to make future code more readable, we let R know about the available columns by appyling the *attach* function:
+```{r}
+attach(house_data)
+```
+
+As a next step lets see how many observation we have in the data set by applying the $dim()$ function:
+```{r}
+dim(house_data)
+```
+We do see that we have 22'570 observations. As only a minority has missing values, we can remove these rows in order to avoid issues later on:
+```{r}
+house_data = na.omit(house_data)
+```
+
+Lets what variables are available:
+```{r}
+names(house_data)
+````
+This overview is very helpful, as we can already identify categorical variables and let R know about them by applying the $factor$ function. 
+
+In this case we have identified two categorical variables and we want R to treat them as such before we proceed any further: 
+```{r}
+zipcode <- factor(zipcode)
+num_rooms <- factor(num_rooms)
+```
+
+#Scatterplot
+As we qualify *price* as a quantitative variable, we can use a scatterplot to have a first overview of the data:
+```{r}
+plot(price)
+```
+
+The scatterplot already give a first indication: Most of the points seem to be "sit at the bottom" of the scatterplot, here between 1 and 2 millions. 
+
+We can therefore expect right-skewed prices. Let's verify this first insight by applying a histogram the the *price* data.
+
+#Histogram
+With the historam we want to receive a more ordered view on the data in comparison to the scatterplot. In order to do so we again plot the distribution of house prices but apply a histogram to it:
+```{r}
+hist(price)
+```
+
+Here we can clearly see it. The *price* data is right-skewed, or with other words, we don't have normally distributed data. This will be a decisive factor to take into consideration in future chapters, where a log-transformation of the data will be suggested.
+
+#Types of housings
+Out the data frame we do see, that all observations are categorized in four types of objects. Let's see if we see some major differences between them. As it doesn't make sense to compare more than 2-3 variables graphically, we first check on the prices and year these have been built: 
+```{r}
+library(ggplot2)
+qplot(y = price, xlim = c(1500,2020), x = build_year,data = house_data, facets = ~ object_type_name)
+```
+It makes sense that once upon a time there where less people and less density resulting in more houses and less apartments being built. Here very well visible. 
+
+Furthermore houses seem to be the most represented object type with the highest value in this sample. Lets have a look at the price distribution per object type by applying boxplots:
+```{r}
+ggplot(house_data, aes(object_type_name, price)) + geom_boxplot()
+```
+Here we can clearly see, that "Einfamilienhäuser" seem to be the most valuable object. At this point in time we can not say, whether this difference is significant.Other than that there seem to be a couple outliers in the high price ranges.
+
+#Correlation matrix
+
+In a next step, we would like to gather a better understanding which variables are correlated to each other. But first we must exlude all non-numeric variables from our data:
+```{r}
+house_data_numeric <- house_data[, sapply(house_data, is.numeric)]
+```
+
+For better visualisation of the column names, we must first rename the very long ones:
+```{r}
+names(house_data_numeric)[8] <- "w%1000"
+names(house_data_numeric)[9] <- "ttime_private"
+names(house_data_numeric)[10] <- "ttime_public"
+names(house_data_numeric)[11] <- "%buildingha"
+names(house_data_numeric)[12] <- "%apartmentsha"
+names(house_data_numeric)[13] <- "%workplaceha"
+names(house_data_numeric)[14] <- "%wpsector1"
+names(house_data_numeric)[15] <- "%wpsector2"
+names(house_data_numeric)[16] <- "%wpsector3"
+names(house_data_numeric)[17] <- "popinha"
+colnames(house_data_numeric)
+```
+
+Now we can check the correlation between all numberic input variables and the output variable price:
+```{r}
+cor(house_data_numeric)[,"price"]
+```
+Out of this table we can already receive the indication that the price seems to be mostly dependent from the variables: "number of rooms" and "living area". 
+
+
+
+Let's visualize and order our findings: 
+```{r}
+library(dplyr)
+library(ggplot2)
+x %>%
+  mutate(rowname = factor(rowname, levels = rowname[order(price)])) %>% # Order by correlation strength
+  ggplot(aes(x = rowname, y = price)) +
+  geom_bar(stat = "identity") +
+  ylab("Correlation with price") +
+  xlab("Variables") 
+```
+
+
+#Interaction
+Furthermore, it can be intresting for further analysis wheter the variables do show major influence on each other. If this is the case, these variables are visibilly correlated to each other. For this investigation, we can visualize the correlations amongst the variables:
+```{r}
+library(corrplot)
+correlations <- cor(house_data_numeric)
+corrplot(correlations, method = "circle", order = "hclust", addrect = 3)
+```
+Following the graphic,we need to expect major interaction between two variable as no strongly correlation between two variables exists.
+
