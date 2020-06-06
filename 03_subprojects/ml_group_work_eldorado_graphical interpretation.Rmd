@@ -16,7 +16,8 @@ As we would like to understand, which variables do have the biggest impact on ho
 #Import Data
 As a first step, we must import the data.
 ```{r}
-house_data <- read.csv("C:/Users/lucac/OneDrive/Dokumente/GitHub/ML-Group-Work/Machine-learning-databases/house_data.csv")
+house_data <- read.csv("C:/Users/lucac/OneDrive/Dokumente/GitHub/ML-Group-Work/01_data/house_data.csv")
+
 ```
 
 In order to make future code more readable, we let R know about the available columns by appyling the *attach* function:
@@ -48,10 +49,13 @@ num_rooms <- factor(num_rooms)
 #Scatterplot
 As we qualify *price* as a quantitative variable, we can use a scatterplot to have a first overview of the data:
 ```{r}
-plot(price)
+library(ggplot2)
+ggplot(data = house_data, mapping = aes(y = price, x = build_year)) +
+  geom_point(aes(alpha=0.1, color=object_type_name)) +
+  xlim(1500, 2020)
 ```
 
-The scatterplot already give a first indication: Most of the points seem to be "sit at the bottom" of the scatterplot, here between 1 and 2 millions. 
+The scatterplot already gives a first indication: Most of the points seem to be "sit at the bottom-right" of the scatterplot, here between 1 and 2 millions. 
 
 We can therefore expect right-skewed prices. Let's verify this first insight by applying a histogram the the *price* data.
 
@@ -63,6 +67,24 @@ hist(price)
 
 Here we can clearly see it. The *price* data is right-skewed, or with other words, we don't have normally distributed data. This will be a decisive factor to take into consideration in future chapters, where a log-transformation of the data will be suggested.
 
+In second step we can investigate, if this is valid for every kind of housing type:
+```{r}
+library(ggplot2)
+ggplot(house_data, aes(x=price)) +
+  geom_histogram(data = subset(house_data, object_type_name=="Einfamilienhaus"),
+                 fill = "red", alpha = 0.2)+
+  geom_histogram(data = subset(house_data, object_type_name=="Mehrfamilienhaus"),
+                 fill = "blue", alpha = 0.2)+
+  geom_histogram(data = subset(house_data, object_type_name=="Sonstiges"),
+                 fill = "green", alpha = 0.2)+
+  geom_histogram(data = subset(house_data, object_type_name=="Wohnung"),
+                 fill = "yellow", alpha = 0.2)+
+  scale_fill_manual(name="Housing types", values=c("red","blue","green","yellow"),
+                      labels=c("Einfamlienhaus", "Mehrfamilienhaus","Sonstiges","Wohnung"))
+
+```
+We do see that the right-skewness for "price" is valid for any type of housing. 
+
 #Types of housings
 Out the data frame we do see, that all observations are categorized in four types of objects. Let's see if we see some major differences between them. As it doesn't make sense to compare more than 2-3 variables graphically, we first check on the prices and year these have been built: 
 ```{r}
@@ -73,9 +95,11 @@ It makes sense that once upon a time there where less people and less density re
 
 Furthermore houses seem to be the most represented object type with the highest value in this sample. Lets have a look at the price distribution per object type by applying boxplots:
 ```{r}
-ggplot(house_data, aes(object_type_name, price)) + geom_boxplot()
+ggplot(house_data, aes(object_type_name, price)) + 
+  geom_boxplot(alpha=0) +
+  geom_jitter(alpha=0.03, color = "tomato")
 ```
-Here we can clearly see, that "Einfamilienhäuser" seem to be the most valuable object. At this point in time we can not say, whether this difference is significant.Other than that there seem to be a couple outliers in the high price ranges.
+Here we can clearly see, that "Einfamilienhäuser" seem to be the most valuable object. Addionally, the red points indicate, that most of the data is coming from "Einfamilienhaus" and "Wohnungen".
 
 #Correlation matrix
 
@@ -99,9 +123,16 @@ names(house_data_numeric)[17] <- "popinha"
 colnames(house_data_numeric)
 ```
 
-Now we can check the correlation between all numberic input variables and the output variable price:
+Now we can check the correlation between all numeric input variables and the output variable price:
 ```{r}
-cor(house_data_numeric)[,"price"]
+library(corrr)
+library(dplyr)
+
+cor.price <- house_data_numeric %>%
+  correlate() %>%
+  focus(price)
+
+cor.price
 ```
 Out of this table we can already receive the indication that the price seems to be mostly dependent from the variables: "number of rooms" and "living area". 
 
@@ -109,14 +140,15 @@ Out of this table we can already receive the indication that the price seems to 
 
 Let's visualize and order our findings: 
 ```{r}
-library(dplyr)
 library(ggplot2)
-x %>%
-  mutate(rowname = factor(rowname, levels = rowname[order(price)])) %>% # Order by correlation strength
+
+cor.price %>%
+  mutate(rowname = factor(rowname, levels = rowname[order(price)])) %>%
   ggplot(aes(x = rowname, y = price)) +
   geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust=0.95, vjust=0.2)) +
   ylab("Correlation with price") +
-  xlab("Variables") 
+  xlab("Variable")
 ```
 
 
@@ -128,4 +160,6 @@ correlations <- cor(house_data_numeric)
 corrplot(correlations, method = "circle", order = "hclust", addrect = 3)
 ```
 Following the graphic,we need to expect major interaction between two variable as no strongly correlation between two variables exists.
+
+
 

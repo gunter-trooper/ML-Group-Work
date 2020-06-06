@@ -1,0 +1,139 @@
+---
+title: "Generalised Additive Models"
+author: "Luca Casuscelli"
+date: "28/05/2020"
+output: pdf_document
+---
+
+#Intro
+In this chapter we will take a look at our data with the help of generalised additive models. 
+
+#Import Data
+As a first step, we must import the data.
+```{r}
+#required packages
+library(ggplot2)
+library(dplyr)
+
+#import data
+house_data <- read.csv("C:/Users/lucac/OneDrive/Dokumente/GitHub/ML-Group-Work/01_data/house_data.csv")
+attach(house_data)
+
+#We work for every model with a separate data set
+house_data_gam <- house_data
+attach(house_data_gam)
+
+#correct the price skewness and add to data frame
+house_data_gam$price.log <- log(house_data_gam$price)
+
+#define which variables have to be seen as factors
+zipcode.fac <- factor(zipcode)
+
+#limit the number of rooms
+hd_limited_rooms <- filter(house_data_gam, num_rooms < 15 & num_rooms > 0)
+```
+
+#Graphical analysis
+So far, we have assumed all effects of continuous predictors to be linear. In this chapter we will leave linearity and look for non-linear relationships in the data. As an example let's compare the dependency of price from number of rooms. In order to achieve a better graphical overview, we will limit the number of rooms to be considered to 15 and delete all zeros, as it doesn't make sense that any real estate has zero rooms.
+
+Example price to number of rooms:
+```{r}
+library(ggplot2)
+
+gg.price.rooms <- ggplot(data = hd_limited_rooms,
+                         mapping = aes(y = price.log,
+                                       x = num_rooms)) +
+ geom_point()
+
+gg.price.rooms +
+  geom_smooth()
+```
+We must consider, that the variance for each category in the number of rooms is fairly high. Indicating, that much more variable do influence the price. At the same time, the curve indicates, that the effect of the price may be not linear.
+
+# Quadratic effects
+In this chapter we try to fit a model by adding a qudratic term and compare it to a model with the assumption of linearity. As we have seen in the chapter about Linear Regression, we do not have to consider all variables. So, for simplicity and limitations in computational power, we avoid interactions and only consider the main variables.
+
+```{r}
+# 1) model with linear effect for price.log
+lm.price.1 <- lm(price.log ~ object_type_name + build_year + living_area + num_rooms + number_of_apartments_in_hectare
++ number_of_workplaces_in_hectare + population_in_hectare,
+data = house_data_gam)
+
+# 2) model with quadratic effect for price.log
+lm.price.2 <- update(lm.price.1, . ~ . + I(num_rooms^2))
+
+# We test the quadratic term with a F-Test:
+anova(lm.price.1, lm.price.2)
+
+```
+
+There is a strong evidence, that $num_rooms$ needs a quadratic term. As we could already see visually. 
+
+
+We can now visualize our model on the data:
+```{r}
+gg.price.rooms + 
+  geom_smooth(method = "lm", 
+              formula = y ~ poly(x, degree = 2))
+
+```
+The value increase seems to be decaying with the numbers of rooms, which we already did see in the first visualisations. Nonetheless, it does not make sense that the value decreases with more than 10 rooms. The model obviously underestimates the price increase for a higher number of rooms. We can therefore try a more complex model.
+
+
+
+
+# More complex non-linear relationships
+In this chapter we will have a look at more complex polynomials. Let's try a cubic polynomial to the data before:
+```{r}
+gg.price.rooms + 
+  geom_smooth(method = "lm", 
+              formula = y ~ poly(x, degree = 3))
+
+```
+We can see that with a cubic polynomial we can reduce the error we had with quadratic polynomials in the example before. Now we can model our data with the following model:
+
+```{r}
+lm.cubic <- lm(price.log ~ poly(num_rooms, degree = 3), data = house_data_gam )
+summary(lm.cubic)
+
+```
+We have a R-quared of 0.21, which tells us, that around 21% of the variation is explained by our variable "num_rooms". As we already know, we have many more variables and therefore this is not surprising. Give the number of variables, we think that 21% is fairly good result. 
+
+
+# Generalised Additive Models (GAMs)
+
+As a next step we finally reach Generalised Additive Models. These are a very powerfull models to fit non-linear relations with multiple predictiors, as this the case with our data set. 
+
+As first step can allow all most relevant variable to have non-linear, smooth, effect. And select on which ones there is significance out of the result.
+
+```{r}
+library(mgcv)
+gam.price.1 <- gam(price.log ~ object_type_name + s(build_year) + s(living_area) + s(num_rooms) + s(number_of_apartments_in_hectare)
++ s(number_of_workplaces_in_hectare) + s(population_in_hectare),data = house_data_gam)
+summary(gam.price.1)
+```
+
+As we can see out of the summary, all variables seem to have a fairly high edf (estimated degree of freedom) and do therefore not stand in linear relationship to the price.
+
+We can try to optimize our model by removing the least relevant smoothing factors and see whether the model does suffer a lot from it:
+
+```{r}
+gam.price.2 <- gam(price.log ~ object_type_name + s(build_year) + s(living_area) + s(num_rooms) + number_of_apartments_in_hectare
++ number_of_workplaces_in_hectare + population_in_hectare,data = house_data_gam)
+summary(gam.price.2)
+```
+
+We do realize, that the smoothing splines are only relevant for 3 variables: build_year, living_area, num_rooms. So we were able to save some computational power without loosing any quality on the model. 
+
+
+# Collinearity of the model
+
+Last but not least we must check the model on collinearity in order to make sure we do not take any wrong conclusions about which variables are of real relevance. For that we can use the vif() function from the {car} package:
+
+```{r}
+library(car)
+vif(gam.price.2)
+```
+The Generalised Variance Inflation Error (GVIF) tell us whether we have to remove a variable. In respect to our model, we do not have any factor above 5. Therefore the model is not affected by collinearity.
+
+
