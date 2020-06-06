@@ -1,0 +1,558 @@
+---
+title: "Applied Machine Learning 01 Group Work"
+author: "Jonas Zürcher, Stephan Wernli, Luca Casuscelli, Dominik Vazquez"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    fig_caption: true
+    number_sections: true
+  html_document: default
+theme: united
+toc: yes
+---
+
+\pagebreak
+
+# Load the libraries and import the dataset
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(e1071)  
+
+house_data <- read_csv("../01_data/house_data.csv")
+
+house_data$object_type_name <- as.factor(house_data$object_type_name)
+# house_data$num_rooms <- as.integer(house_data$num_rooms)
+
+
+house_data <- house_data %>% select(object_type_name,
+                                    build_year,
+                                    living_area,
+                                    zipcode,
+                                    municipality_name,
+                                    num_rooms,
+                                    travel_time_private_transport,
+                                    travel_time_public_transport,
+                                    number_of_buildings_in_hectare,
+                                    number_of_apartments_in_hectare,
+                                    number_of_workplaces_in_hectare,
+                                    population_in_hectare,
+                                    water_percentage_1000,
+                                    price)
+```
+
+# Regression Tree
+
+In this chapter we want to work with a regression tree. Once more we aim to predict the price with the help of the available predictors. The tree()-function is limited to factorial predictors with 32 classes maximum. So we decided to not use the factorial predictors "zipcode" and "municipality_name". The third factorial predictor "num_rooms" was used as a continuous variable. In the case of a regression tree this can be a valid approach. 
+
+In the previous chapters we already found out that the price is right skewed and therefore we log() transform the price what leads to nearly perfect bell shape. 
+
+In our first try we want to grow our tree as big as possible to see how far we can go with this approach. After some experimenting with the data we ended up with a mindev=0.00005 that still doesn't exceed the maximum depth and leads to a tree with 1493 nodes. 
+
+```{r}
+library(ISLR)
+library(tree)
+# library(rpart)
+
+# We work for every model with a separate data set
+house_data_trees <- house_data
+
+# Log-Transform dependent variable
+house_data_trees$price.log <- log(house_data_trees$price)
+ 
+# Fix the predictors zipcode and num_rooms to be a factor
+house_data_trees$zipcode.fac <- factor(house_data_trees$zipcode)
+house_data_trees$num_rooms.fac <- factor(house_data_trees$num_rooms)
+
+house_data_trees.model <-  tree(price.log ~  
+                            object_type_name +
+                            build_year +
+                            living_area +
+#                            zipcode.fac +
+                            num_rooms +
+                            travel_time_private_transport +
+                            travel_time_public_transport +
+                            number_of_buildings_in_hectare +
+                            number_of_apartments_in_hectare +
+                            number_of_workplaces_in_hectare +
+                            population_in_hectare +
+                            water_percentage_1000,
+                            data = house_data_trees, 
+                            mindev=0.00005)
+ 
+summary(house_data_trees.model)
+
+```
+
+This approach has of course several issues that we will address later. For example we used all data for training and didn't spare any of it for the test phase. And we didn't prune the tree yet what should result in a huge variance and over-fitting. 
+
+It doesn't make any sense to plot a tree of this size. But anyways we want to show graphically how good we can predict the log()-transformed price with the regression tree by plotting the back-transformed prediction and the original data.
+
+```{r}
+house_data_trees.model.pred <- 
+  predict(house_data_trees.model, house_data_trees , type="vector")
+
+plot(exp(house_data_trees.model.pred),house_data_trees$price)
+```
+
+We take a look at the back-transformed data because differences in the part of the data with higher values are more pronounced. Anyway it looks like we could achieve some correlation between our data and the prediction. Let's find out about the error that is included in our predictions.
+
+```{r}
+house_data_trees.model.pred.error <- 
+  house_data_trees.model.pred - house_data_trees$price.log
+element_ID <- 1:length(house_data_trees.model.pred.error)
+
+ggplot() + geom_boxplot(aes(y=house_data_trees.model.pred.error))
+```
+```{r}
+hist(house_data_trees.model.pred.error)
+```
+The residuals seem to be pretty much normally distributed. There are some outliers but we consider the data to be in bell shape well enough. 
+
+Now we want to calculate the Residual Sum of Squares and the Mean Square Error for our predictions. 
+
+```{r}
+house_data_trees.model.pred.RSS <- 
+  sum((house_data_trees$price.log - house_data_trees.model.pred)^2)
+house_data_trees.model.pred.MSE <-
+  house_data_trees.model.pred.RSS/length(house_data_trees.model.pred)
+house_data_trees.model.pred.deviation <- 
+  sqrt(house_data_trees.model.pred.MSE) 
+
+plot(element_ID,house_data_trees.model.pred.error)
+title(main="Analysis of the residuals (with average)")
+abline(0 ,0, lwd=3,lty="dotted")
+abline(house_data_trees.model.pred.deviation ,0, lwd=2, col="red", lty="longdash")
+abline((house_data_trees.model.pred.deviation * -1) ,0, lwd=2, col="red", lty="longdash")
+
+```
+RSS: `r house_data_trees.model.pred.RSS`  
+MSE: `r house_data_trees.model.pred.MSE`  
+Deviation: `r house_data_trees.model.pred.deviation`  
+
+Now let's have a look how the result changes if we split the data in a train and a test set. 
+
+```{r}
+set.seed(1)
+house_data_trees.size <- nrow(house_data_trees)
+train_set.size <- house_data_trees.size * 0.7
+
+house_data_trees.train.idx <- sample(1:house_data_trees.size, as.integer(train_set.size))
+
+house_data_trees.model2 <-  tree(price.log ~  
+                            object_type_name +
+                            build_year +
+                            living_area +
+#                            zipcode.fac +
+                            num_rooms +
+                            travel_time_private_transport +
+                            travel_time_public_transport +
+                            number_of_buildings_in_hectare +
+                            number_of_apartments_in_hectare +
+                            number_of_workplaces_in_hectare +
+                            population_in_hectare +
+                            water_percentage_1000,
+                            data = house_data_trees, 
+                            mindev=0.00005,
+                            subset=house_data_trees.train.idx
+                            ) 
+ 
+summary(house_data_trees.model2)
+```
+As we expect we get a model with slightly different results. 
+
+```{r}
+
+# Predict with Train-Set
+house_data_trees.model2.pred.train <- 
+  predict(house_data_trees.model2, 
+          house_data_trees[house_data_trees.train.idx,], 
+          type="vector")
+
+# Train-Set Error
+house_data_trees.model2.pred.train.errors <-
+  house_data_trees[house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model2.pred.train
+
+# Train-Set RSS
+house_data_trees.model2.pred.train.RSS <- 
+  sum(house_data_trees.model2.pred.train.errors^2)
+
+# Train-Set MSE
+house_data_trees.model2.pred.train.MSE <-
+  house_data_trees.model2.pred.train.RSS / 
+  length(house_data_trees.model2.pred.train)
+
+# Train-Set Deviation
+house_data_trees.model2.pred.train.deviation <- 
+  sqrt(house_data_trees.model2.pred.train.MSE) 
+
+# Predict with Test-set
+house_data_trees.model2.pred.test <- 
+  predict(house_data_trees.model2,
+          house_data_trees[-house_data_trees.train.idx,], 
+          type="vector")
+
+# Test-Set Error
+house_data_trees.model2.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model2.pred.test
+
+# Test-Set RSS
+house_data_trees.model2.pred.test.RSS <- 
+  sum(house_data_trees.model2.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model2.pred.test.MSE <-
+  house_data_trees.model2.pred.test.RSS / 
+  length(house_data_trees.model2.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model2.pred.test.deviation <- 
+  sqrt(house_data_trees.model2.pred.test.MSE) 
+  
+# Construct Dataframe for display of Errors
+# Train-Set
+element_ID2.train <- as.integer(
+  names(house_data_trees.model2.pred.train.errors))
+
+house_data_trees.model2.pred.train.errors.df <-
+  tibble(element_ID2.train,
+         house_data_trees.model2.pred.train.errors,
+         "Train" )
+
+colnames(house_data_trees.model2.pred.train.errors.df) <- 
+  c('ID','error','type')
+
+# Test-Set
+element_ID2.test <- as.integer(
+  names(house_data_trees.model2.pred.test.errors)) + 
+  max(element_ID2.train)
+
+house_data_trees.model2.pred.test.errors.df <-
+  tibble(element_ID2.test,
+         house_data_trees.model2.pred.test.errors,
+         "Test" )
+
+colnames(house_data_trees.model2.pred.test.errors.df) <- 
+  c('ID','error','type')
+
+# Combine Dataframes
+house_data_trees.model2.pred.errors.df <-
+  rbind(house_data_trees.model2.pred.test.errors.df,
+        house_data_trees.model2.pred.train.errors.df)
+house_data_trees.model2.pred.errors.df <- 
+  arrange(house_data_trees.model2.pred.errors.df, ID)
+
+ggplot(data = house_data_trees.model2.pred.errors.df, 
+       mapping = aes(x = ID,y = error, color = type)) + 
+  geom_point() + 
+  geom_boxplot(alpha = 0.5)
+
+```
+Training-Set:  
+RSS: `r house_data_trees.model2.pred.train.RSS`  
+MSE: `r house_data_trees.model2.pred.train.MSE`  
+Deviation: `r house_data_trees.model2.pred.train.deviation` 
+
+Test-Set:
+RSS: `r house_data_trees.model2.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pred.test.deviation`  
+
+We can clearly see that the prediction on the test set is performing worse than the prediction on the training set. This is because the tree was grown with the training set and is better fitting the training data than the test data. This means that the tree is over-fitting. This was expected because we still use a fully grown tree.
+
+We want to increase the performance of our tree. That means that we want to reduce the over-fitting or in other words the variance.
+
+There are several techniques to achieve this. First we will take a look at pruning. 
+
+## Pruning
+Now we want to find out if pruning would improve our results and reduce the over-fitting. We use cost-complexity pruning because cross-validation pruning can be computationally very costly.
+
+```{r}
+house_data_trees.model2.pruning = cv.tree(house_data_trees.model2, FUN = prune.tree, K=10)
+plot(house_data_trees.model2.pruning)
+```
+We can see that the deviance in this huge tree is falling very quickly. 
+
+Let us now investigate the influence of the tree size and the alpha (k) on the deviance of the tree. It is important not to confuse the parameter K (big) of the cross-validation that determines the K-th fold of the CV with the result k (little) that corresponds to the alpha of the cost-complexity pruning.
+
+```{r}
+house_data_trees.model2.pruning.cv_size <- 
+  house_data_trees.model2.pruning$size[max(which(house_data_trees.model2.pruning$dev == 
+                                               min(house_data_trees.model2.pruning$dev)))]
+
+house_data_trees.model2.pruning.cv_alpha <- 
+  house_data_trees.model2.pruning$k[max(which(house_data_trees.model2.pruning$dev == 
+                                               min(house_data_trees.model2.pruning$dev)))]
+
+par(mfrow=c(1,2))
+plot(house_data_trees.model2.pruning$size, house_data_trees.model2.pruning$dev, type="b")
+plot(house_data_trees.model2.pruning$k, house_data_trees.model2.pruning$dev, type="b")
+par(mfrow=c(1,1))
+
+```
+The graphs are hard to read because of the huge node count of the tree. But we can determine the parameters from the data frame.
+
+The Cross-Validation shows a minimal deviance for the following parameters:
+
+Tree-Size: `r house_data_trees.model2.pruning.cv_size`  
+
+Alpha (k): `r house_data_trees.model2.pruning.cv_alpha`  
+
+Now we will prune the tree to match the node count we got from the cross validation. And check whether the tree is able to fit the test set better. 
+
+```{r}
+house_data_trees.model2.pruned <- 
+  prune.tree(house_data_trees.model2, 
+             best = house_data_trees.model2.pruning.cv_size)
+
+plot(house_data_trees.model2.pruned)
+text(house_data_trees.model2.pruned, pretty=1, cex=0.55)
+```
+The resulting tree is small enough again to plot it. 
+
+```{r}
+# Predict with Test-set and pruned tree
+house_data_trees.model2.pruned.pred.test <- 
+  predict(house_data_trees.model2.pruned,
+          house_data_trees[-house_data_trees.train.idx,], 
+          type="vector")
+
+# Test-Set Error
+house_data_trees.model2.pruned.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model2.pruned.pred.test
+
+# Test-Set RSS
+house_data_trees.model2.pruned.pred.test.RSS <- 
+  sum(house_data_trees.model2.pruned.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model2.pruned.pred.test.MSE <-
+  house_data_trees.model2.pruned.pred.test.RSS / 
+  length(house_data_trees.model2.pruned.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model2.pruned.pred.test.deviation <- 
+  sqrt(house_data_trees.model2.pruned.pred.test.MSE) 
+
+```
+
+Test-Set with fully grown tree:  
+RSS: `r house_data_trees.model2.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pred.test.deviation`  
+
+Test-Set with pruned tree:  
+RSS: `r house_data_trees.model2.pruned.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pruned.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pruned.pred.test.deviation`  
+
+The result is disappointing. The un-pruned tree is performing better on the test-set. We used the size for the 'best' parameter  of the prune.tree() method with the lowest deviance. But the pruned tree is not performing better on the test-set. That was not expected.
+
+We observed that the cv.tree() function returns a deviance that was not expected. The deviance reduces until the 10th node and after that it stays constant. It is possible that there is a problem with the determination of the deviance after the 10th node. 
+
+It is also possible that our test-set is by chance a set that doesn't perform well, but that our pruned tree will generalize better.
+
+## Bagging
+Now we want to find out if we can improve the performance with bagging. We will use 25 bags. 
+
+```{r}
+library(ipred)
+
+house_data_trees.model.bag <- bagging(price.log ~  
+                            object_type_name +
+                            build_year +
+                            living_area +
+                            num_rooms +
+                            travel_time_private_transport +
+                            travel_time_public_transport +
+                            number_of_buildings_in_hectare +
+                            number_of_apartments_in_hectare +
+                            number_of_workplaces_in_hectare +
+                            population_in_hectare +
+                            water_percentage_1000,
+                            data = house_data_trees, 
+                            subset=house_data_trees.train.idx,
+                            nbagg=25,
+                            coob=TRUE
+)
+print(house_data_trees.model.bag)
+```
+
+```{r}
+house_data_trees.model.bag.pred.test <- 
+  predict(house_data_trees.model.bag, 
+          newdata = house_data_trees[-house_data_trees.train.idx,])
+
+# Bagging
+# Test-Set Error
+house_data_trees.model.bag.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model.bag.pred.test
+
+# Test-Set RSS
+house_data_trees.model.bag.pred.test.RSS <- 
+  sum(house_data_trees.model.bag.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model.bag.pred.test.MSE <-
+  house_data_trees.model.bag.pred.test.RSS / 
+  length(house_data_trees.model.bag.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model.bag.pred.test.deviation <- 
+  sqrt(house_data_trees.model.bag.pred.test.MSE) 
+
+```
+
+Test-Set with fully grown tree:  
+RSS: `r house_data_trees.model2.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pred.test.deviation`  
+
+Test-Set with bagging:  
+RSS: `r house_data_trees.model.bag.pred.test.RSS`  
+MSE: `r house_data_trees.model.bag.pred.test.MSE`  
+Deviation: `r house_data_trees.model.bag.pred.test.deviation`  
+
+With bagging the predictions on the Test-Set get slightly better. 
+
+## Random Forests
+Now we take a look at random forests. We will use 3 Parameters (Square Root of 11 Parameters).
+
+```{r}
+library(randomForest)
+
+house_data_trees.model.rf <- randomForest(price.log ~  
+                              object_type_name +
+                              build_year +
+                              living_area +
+                              num_rooms +
+                              travel_time_private_transport +
+                              travel_time_public_transport +
+                              number_of_buildings_in_hectare +
+                              number_of_apartments_in_hectare +
+                              number_of_workplaces_in_hectare +
+                              population_in_hectare +
+                              water_percentage_1000,
+                              data = house_data_trees, 
+                              subset=house_data_trees.train.idx,
+                              mtry=3,
+                              importance=TRUE
+)
+
+importance(house_data_trees.model.rf)
+
+```
+
+We can see that there are some important predictors like living_area, build_year, travel_time_public_transport. It is pretty counter intuitive that num_rooms doesn't seem to be important. 
+
+```{r}
+house_data_trees.model.rf.pred.test <- 
+  predict(house_data_trees.model.rf, 
+          newdata = house_data_trees[-house_data_trees.train.idx,])
+
+# Bagging
+# Test-Set Error
+house_data_trees.model.rf.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model.rf.pred.test
+
+# Test-Set RSS
+house_data_trees.model.rf.pred.test.RSS <- 
+  sum(house_data_trees.model.rf.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model.rf.pred.test.MSE <-
+  house_data_trees.model.rf.pred.test.RSS / 
+  length(house_data_trees.model.rf.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model.rf.pred.test.deviation <- 
+  sqrt(house_data_trees.model.rf.pred.test.MSE) 
+
+```
+
+Test-Set with bagging:  
+RSS: `r house_data_trees.model.bag.pred.test.RSS`  
+MSE: `r house_data_trees.model.bag.pred.test.MSE`  
+Deviation: `r house_data_trees.model.bag.pred.test.deviation`  
+
+Test-Set with Random Forest:  
+RSS: `r house_data_trees.model.rf.pred.test.RSS`  
+MSE: `r house_data_trees.model.rf.pred.test.MSE`  
+Deviation: `r house_data_trees.model.rf.pred.test.deviation`  
+
+So far the Random Forest approach could improve the predictions on the test-set the most.
+
+## Boosting
+Finally we want to take a look at boosting and if we can achieve a further improvement with it. We use gaussian distribution because it is a regression tree. 
+
+```{r}
+library(gbm)
+
+house_data_trees.model.boost <- 
+                          gbm(price.log ~  
+                              object_type_name +
+                              build_year +
+                              living_area +
+                              num_rooms +
+                              travel_time_private_transport +
+                              travel_time_public_transport +
+                              number_of_buildings_in_hectare +
+                              number_of_apartments_in_hectare +
+                              number_of_workplaces_in_hectare +
+                              population_in_hectare +
+                              water_percentage_1000,
+                              data = house_data_trees[house_data_trees.train.idx,], 
+                              distribution="gaussian",
+                              n.trees=5000,
+                              interaction.depth=2
+)
+
+summary(house_data_trees.model.boost,plotit=FALSE)
+```
+
+Again the living_area, travel_time_public_transport and build_year seam to be important predictors. But we can see here that the ranks of travel_time_public_transport and build_year are swapped.
+
+```{r}
+house_data_trees.model.boost.pred.test <- 
+  predict(house_data_trees.model.boost, 
+          newdata = house_data_trees[-house_data_trees.train.idx,],
+          n.trees=5000)
+
+# Bagging
+# Test-Set Error
+house_data_trees.model.boost.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model.boost.pred.test
+
+# Test-Set RSS
+house_data_trees.model.boost.pred.test.RSS <- 
+  sum(house_data_trees.model.boost.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model.boost.pred.test.MSE <-
+  house_data_trees.model.boost.pred.test.RSS / 
+  length(house_data_trees.model.boost.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model.boost.pred.test.deviation <- 
+  sqrt(house_data_trees.model.boost.pred.test.MSE) 
+
+```
+
+Test-Set with Random Forest:  
+RSS: `r house_data_trees.model.rf.pred.test.RSS`  
+MSE: `r house_data_trees.model.rf.pred.test.MSE`  
+Deviation: `r house_data_trees.model.rf.pred.test.deviation`  
+
+Test-Set with Boosting:  
+RSS: `r house_data_trees.model.boost.pred.test.RSS`  
+MSE: `r house_data_trees.model.boost.pred.test.MSE`  
+Deviation: `r house_data_trees.model.boost.pred.test.deviation`  
+
+Boosting again improved the predictions on the test-set. It is our final regression tree model we choose. 
+
+We could repeat all of this now for a classification tree. But the approach is basically the same. 
