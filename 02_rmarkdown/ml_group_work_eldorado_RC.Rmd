@@ -834,6 +834,8 @@ house_data.multinomial<-house_data
 Finally we can fit the model with the data. The summary of the model is not commented, because its beyond the topic of this course. 
 
 ```{r}
+library(nnet)
+
 multinom.object_type<-multinom(object_type_name~population_in_hectare,data=house_data.multinomial)
 
 summary(multinom.object_type)
