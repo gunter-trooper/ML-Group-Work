@@ -1,0 +1,366 @@
+---
+title: "Untitled"
+author: "Jonas Zürcher, Stephan Wernli, Luca Casuscelli, Dominik Vazquez"
+date: "22 4 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r include=FALSE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+
+# Load the libraries and import the dataset
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#Libraries
+
+library(tidyverse)
+library(e1071)  
+library(nnet)
+
+# Sampling option
+RNGkind(sample.kind = "Rounding")
+
+# Data import
+
+house_data <- read_csv("../01_data/house_data.csv")
+
+house_data$object_type_name <- as.factor(house_data$object_type_name)
+house_data$num_rooms <- as.factor(house_data$num_rooms)
+
+house_data <- house_data %>% select(object_type_name,
+                                    build_year,
+                                    living_area,
+                                    zipcode,
+                                    municipality_name,
+                                    num_rooms,
+                                    travel_time_private_transport,
+                                    travel_time_public_transport,
+                                    number_of_buildings_in_hectare,
+                                    number_of_apartments_in_hectare,
+                                    number_of_workplaces_in_hectare,
+                                    population_in_hectare,
+                                    water_percentage_1000,
+                                    price)
+```
+
+
+# General Linear models
+
+Generalised Linear Models (GLM) are a group of models. The Poisson, the Binomial, the Binary and the Multinominal models are all members of GLM. They are an extension of the Linear Model to deal with particular types of data.They have in common that all assume a specific distribution of the data and use a link function for the model.
+
+## The Poisson model
+
+Lets start with the binomial model. In this section we would like to evaluate for what kind of data this model is the better choice the the basic linear model. 
+
+### Preparation
+
+First we prepare the house data for the analysis. We would like to compare three different groups in matter of number of workplaces in a hectare.
+
+Therefore we produce three groups for the number_of_workplaces_in_hectare count data:
+"1. Low industrialized" are all entries with only 0-25 workplaces in a hectare.
+"2. Moderate industrialized" are all entries with 26 to 50 workplaces in a hectare.
+"3. Highly industrialized" are all entries with more than 50 workplaces in a hectare.
+
+```{r}
+house_data.workplace<-house_data
+
+# Using a group function to build groups of count data
+
+getgroup<-function(n) {
+   if(n >= 0 & n<=25 ) {
+      "1. Low industrialized"
+    } else if(n > 25 & n<=50 ) {
+      "2. Moderate industrialized"
+    }else {
+      "3. Highly industrialized"
+    }
+}
+
+house_data.workplace$group<-sapply(house_data.workplace$number_of_workplaces_in_hectare,getgroup)
+
+house_data.workplace$group<-as.factor(house_data.workplace$group)
+
+```
+
+### Boxplot
+
+Lets have a closer look a the data with a boxplot. The boxplot shows three well distinguished groups.  
+
+```{r}
+ggplot(data=house_data.workplace,
+       mapping =aes(y=number_of_workplaces_in_hectare,
+                    x=group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+### Build a Linear model
+
+The next step is to fit a linear model, because it is the simplest model to describe data. 
+
+```{r}
+lm.workplaces <- lm(number_of_workplaces_in_hectare ~ group, data = house_data.workplace)
+round(coef(lm.workplaces), digits = 10)
+```
+
+The estimates look ok, if we round them. We have 3 workplaces for low industrialized areas, 30 workplaces for moderated industrialzed areas and 73 workplaces for highly industrialzed areas
+
+### Simulate data with the linear model
+
+Now we control the model by simulating new data and check if the linear model produces realistic new data. We also produce a boxplot of the new data. 
+
+```{r}
+set.seed(4)
+sim.workplaces <- simulate(lm.workplaces)
+
+head(sim.workplaces)
+
+ggplot(data=sim.workplaces,
+       mapping =aes(y=sim_1,
+                    x=house_data.workplace$group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+As we see in the simulated data. There are workplaces counts below zero, which is not possible, but typical for a linear model. Also the values are numeric and not integers as needed in this case. Furthermore the variability doesn't increase with the mean value of the groups. This needs improvment. The solution is to use a poisson model. The possion model only allows values above zero.  
+
+### Build a Poisson model 
+
+Lets fit the data with a possion model. By using this apporach the data is transformed with the exponential function to avopid negative values. Furthermore we assume a Possion distribution so the variance of the observations depends on the mean values and the simulated values are all integers. 
+
+```{r}
+glm.workplaces<-glm(number_of_workplaces_in_hectare ~ group,
+               family="poisson", 
+               data=house_data.workplace)
+summary(glm.workplaces)
+```
+
+Then we simulate new data by using the fitted poisson model and plot it.
+
+```{r}
+set.seed(4)
+sim.data.workplaces_2 <- simulate(glm.workplaces)
+NROW(sim.data.workplaces_2)
+head(sim.data.workplaces_2)
+tail(sim.data.workplaces_2)
+
+ggplot(data=sim.data.workplaces_2,
+       mapping =aes(y=sim_1,
+                    x=house_data.workplace$group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+Now the simulated data looks realistic. The variability increases with increasing count and there are now values below zero. Also the simulated values are integers. Using the Poisson model in this case reflects the reality way better then the linear model. 
+
+## Binomial model
+
+The next model we would like to explorate is the binomial model. 
+
+### Preparation
+Our data doesn't have a entries with binomial data. Therefore we create a binomial data with the number of workplaces in a hectare. For this we assume the highest entry is the highest possible entry and therefore 100 %. All others entries are now transformed into a percentage value in respect to the maximal entry. Furthermore a failure column is produced by substract each value from the max value. This column will be need to build the binomial model. 
+
+```{r}
+house_data.binomial<-house_data
+
+max.workplace<-max(house_data.binomial$number_of_workplaces_in_hectare)
+
+workplace_coverage<-house_data.binomial$number_of_workplaces_in_hectare/
+  max.workplace
+house_data.binomial$workplace_coverage<-workplace_coverage
+  
+
+# Make a column with pseudo failure entries
+
+house_data.binomial$failure<-max.workplace-house_data.binomial$number_of_workplaces_in_hectare
+```
+
+## Build a Linear model
+
+First we fit the data again with a linear model, because it is the simplest model to describe data. 
+
+```{r}
+lm.workplaces_coverage <- lm(workplace_coverage ~ population_in_hectare, data = house_data.binomial)
+
+round(coef(lm.workplaces_coverage), digits = 10)
+```
+
+
+### visualization of the Linear model
+
+Lets plot the workplace coverage with the population in hectare together and a Linear fit. 
+
+```{r}
+ggplot(data = house_data.binomial,
+mapping = aes(y = workplace_coverage,
+x = house_data.binomial$population_in_hectare)) +
+  geom_point(size=1)+
+  geom_smooth(method = "lm", se = FALSE) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1,col="grey")+
+  xlab("Population in hectare")+
+  ylab("Workplace coverage")
+```
+
+We see a slight positive trend in the plot. But we can't be happy yet. With the linear model fit we could get prediction values outside the range of 0 % and 100 %, which is not possible. Even fitted values could lay outside this range. Therefore we need the binomial model. 
+
+### Build a Binomial model
+
+We will transform the data with the inverse logit function. With this function the values are always between 0 and 1. We achieve this by fitting the data with a binomial model. 
+
+```{r}
+glm.workplace_coverage<-glm(cbind(house_data.binomial$number_of_workplaces_in_hectare,house_data.binomial$failure)~population_in_hectare,family="binomial",data= house_data.binomial)
+
+summary(glm.workplace_coverage)
+```
+
+### Simulate data with the binomial model 
+
+To see if our new model works, we simulated new dataframe with 100 predicted values by using the binomial model. 
+
+```{r}
+new.data = data.frame(population_in_hectare = seq(0, 1000, length.out = 100))
+new.data$pred.workplace_coverage <- predict(glm.workplace_coverage, newdata = new.data,
+                                 type = "response")
+```
+
+### Visualized the simulated binomial data
+
+Now we plot the real data (red) together with the simulated data (black). We chose to simulated data with a higher population in hectare number than in the real data to shows a better visualization of the used model.
+
+```{r}
+ggplot(data = house_data.binomial,
+mapping = aes(y = workplace_coverage,
+x = house_data.binomial$population_in_hectare)) +
+  geom_point(col="red",size=1)+
+  geom_point(data = new.data,
+               mapping = aes(
+      y = pred.workplace_coverage,
+      x = population_in_hectare),size=1) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1, col="gray")+
+  xlab("Population in hectare")+
+  ylab("Workplace coverage")
+```
+
+The plot shows, that a higher population in hectare results in a higher workplace coverage. 
+
+## Binary model
+
+We would also like to use a binary model to identify the object type by using the price, the number of rooms and living area. Since we don't have any by default, we have to make some data preparation.
+
+### Preparation
+
+First we prepare a dataset only containing the two object types: "Wohnung" or "Others".
+
+```{r}
+house_data.binary<-house_data
+
+getbinary<-function(p) {
+   if(p=="Wohnung") {
+      1 
+    } else {
+      0
+    }
+}
+
+house_data.binary$binary_code<-sapply(house_data.binary$object_type_name,getbinary)
+```
+
+### Fit the binary model
+
+Binary data is a special case of binomial data and ist therefore also fitted with a binomial model. In this special case we can even use the model to classify new samples. Here this would be to evaluate what object type we get for a given population in hectare. The best fit of the model is chosen by evaluate the maximum likelihood.  
+
+
+```{r}
+glm.object_type<-glm(binary_code~population_in_hectare,family="binomial",data= house_data.binary)
+summary(glm.object_type)
+```
+
+### Simulate data with the fitted binary model
+
+The next step is to simulate data with the evaluated model.
+
+```{r}
+new.data2 = data.frame(population_in_hectare = seq(0, 500, length.out = 100))
+new.data2$pred.object_type <- predict(glm.object_type, newdata = new.data2,
+                                 type = "response")
+```
+
+### Visualization of the simulated data 
+
+The simulated data (black) is now plotted together with the real data. We see that higher population in hectare results in higher probability that the object type is "Wohnung"
+
+```{r}
+ggplot(data = house_data.binary,
+mapping = aes(y = binary_code,
+x = population_in_hectare)) + 
+  geom_point(col="red",size=1)+
+  geom_point(data = new.data2,
+               mapping = aes(
+      y = pred.object_type,
+      x = population_in_hectare),size=1) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1,col="grey")+
+  xlab("Population_in_hectare")+
+  ylab("Object type: 1 (Wohnung) or 0 (Others)")
+
+```
+
+### Estimate the performance of the binary model
+
+Now, lets have a look have good the perfomance of our binary model is. For this we have to compare the real data (observed) with the fitted data. Therefore we first discretise the fitted values into 0 and 1. 
+
+```{r}
+fitted.object.disc <- ifelse(fitted(glm.object_type) < 0.5,
+yes = 0, no = 1)
+head(fitted.object.disc)
+```
+
+Then we make a dataframe with the real data and the fitted data and display them
+
+```{r}
+d.obs.fit.object <- data.frame(obs = house_data.binary$binary_code,
+fitted = fitted.object.disc)
+
+table(d.obs.fit.object$obs)
+
+table(obs = d.obs.fit.object$obs,
+fit = d.obs.fit.object$fitted)
+```
+
+As we see, there were 9131 object with the type "Others" and 13439 with the type "Wohnung". The model classifies 11992 out of 13439 "Others" and 2748 "Wohnung" out of 9131 correctly. This means that our binary models classifies the object type "Others" way better than the object type "Wohnung". 
+
+## Multinomial model
+
+The last section is about building a multinomial model
+
+### Preparation
+
+This time we use all object types.
+
+```{r}
+house_data.multinomial<-house_data
+```
+
+### Fit a multinomial model
+
+Finally we can fit the model with the data. The summary of the model is not commented, because its beyond the topic of this course. 
+
+```{r}
+multinom.object_type<-multinom(object_type_name~population_in_hectare,data=house_data.multinomial)
+
+summary(multinom.object_type)
+ 
+```
+

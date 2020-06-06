@@ -1,0 +1,207 @@
+---
+title: "Untitled"
+author: "Jonas Zürcher, Stephan Wernli, Luca Casuscelli, Dominik Vazquez"
+date: "22 4 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r include=FALSE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+
+# Load the libraries and import the dataset
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#Libraries
+
+library(tidyverse)
+library(neuralnet)
+library(nnet)
+library(caret)
+
+# Sampling option
+RNGkind(sample.kind = "Rounding")
+
+# Data import
+
+house_data <- read_csv("../01_data/house_data.csv")
+
+house_data$object_type_name <- as.factor(house_data$object_type_name)
+house_data$num_rooms <- as.factor(house_data$num_rooms)
+
+house_data <- house_data %>% select(object_type_name,
+                                    build_year,
+                                    living_area,
+                                    zipcode,
+                                    municipality_name,
+                                    num_rooms,
+                                    travel_time_private_transport,
+                                    travel_time_public_transport,
+                                    number_of_buildings_in_hectare,
+                                    number_of_apartments_in_hectare,
+                                    number_of_workplaces_in_hectare,
+                                    population_in_hectare,
+                                    water_percentage_1000,
+                                    price)
+```
+
+
+# Neural network lab
+
+The idea behind neural networks is the attempt to imitate the human brain. 
+The neural network is built on three units:
+- A set of inputs consisting of information and its bias
+- A summing function, that considers the inputs in an aggregated form
+- A single ouput, which is decided by the activation function and the summing output. 
+
+In this section we will use a classifier neural network to distinguish between the object types "Wohnung" and "Einfamilienhaus" by using the input living_area, log_price, population_in_hectare 
+
+First we prepare then data
+
+### Preparation oif the data
+
+First we prepare the data by chosing the right data format. Furthermore the data ist reduced by reducing the dataset to  only entries with 4 rooms and the object types "Wohnung" and "Einfamilienhaus". The final dataset is splitted into a training and test dataset in the ratio 1:1. 
+
+```{r}
+# Save the data as a topic specific dataset
+house_data.network<-house_data
+
+# Change num_rooms from factor to numeric
+house_data.network$num_rooms<-as.numeric(paste(house_data.network$num_rooms))
+
+# Reduced the data to only entries with 4 rooms and the object types "Wohnung" and "Einfamilienhaus"
+
+house_data.network<-house_data.network %>%
+  filter(num_rooms ==4)%>%
+  filter(object_type_name=="Wohnung"|object_type_name=="Einfamilienhaus")
+
+# Adjust levels from four to only two as intended
+house_data.network$object_type_name<-as.character(house_data.network$object_type_name)
+house_data.network$object_type_name<-as.factor(house_data.network$object_type_name)
+
+# Add a column with the logged prize
+house_data.network$log_price<-log(house_data.network$price)
+
+# Set seed for reproducible results 
+
+set.seed(1)
+
+# Split the data into a train and test set
+
+index <- sample(1:nrow(house_data.network),round(0.5*nrow(house_data.network)))
+house_data.network.train <- house_data.network[index,]
+house_data.network.test <- house_data.network[-index,]
+```
+
+
+### Build a neural network with two hidden layer and measure its performance
+
+First we build a neural network with two hidden layers. Each of the layers consist of three neurons. We tried different combinations and this is one, is of the few approaches, that resulted in a working model. When we used less than 3 neurons, no classification was possible. On the otherhand  a multilayer appproach with more than 3 neurons, couldn't be processed by R in a reasonable time. We choose the feed-forward approach to keep the complexity of the approach on a reasonable level. For the classification it's important to choose linear.output = FALSE. If a regression neural network should be built you need to choose linear.output = TRUE. 
+
+
+```{r}
+nn2 <- neuralnet( object_type_name~ living_area +log_price+population_in_hectare, hidden = c(3,3), data = house_data.network.train, linear.output = FALSE,stepmax = 1e+8)
+summary(nn2)
+
+plot(nn2, rep = "best")
+```
+
+The model has been produced sucessfully. It needed 22753 steps to find the best model. The next step is to use the model to make predictions with the test data. 
+
+```{r}
+# Make the prediction
+prediction_nn2 <- predict(nn2,house_data.network.test)
+
+prediction_nn2<-prediction_nn2 %>% 
+  as_tibble(.name_repair = ~ c("Prob_Wohnung", "Prob_Einfamilienhaus"))
+
+# Chose the object with the highest probability for each row and save it in a new column.
+
+predict<-1
+
+for(i in 1:length(prediction_nn2$Prob_Wohnung)){
+  predict[i]<-if (prediction_nn2$Prob_Wohnung[i]>prediction_nn2$Prob_Einfamilienhaus[i]) {
+    "Wohnung"
+  } else {
+    "Einfamilienhaus"
+  }
+}
+
+prediction_nn2$prediction<-predict
+
+# Show the performance of the neural network model as a table (fit/obs) 
+
+d.obs <- data.frame(obs = house_data.network.test$object_type_name,
+fitted = prediction_nn2$prediction)
+
+table(d.obs$obs)
+
+table(obs = d.obs$obs,
+fit = prediction_nn2$prediction)
+
+data<-data.frame(obs = d.obs$obs,
+fit = prediction_nn2$prediction)
+
+```
+
+As we see in the table, there were 491 "Einfamilienhaus" and 1052 "Wohnung" entries to be classified. Our model predicted 316 "Einfamilienhaus" correctly and only 85 "Wohnung" correctly. So this model is not really saitsfying. Lets try another neural network model. 
+
+
+### Build a neural network with one hidden layer and measure its performance
+
+This time we just use only one hidden layer to build our neural network model. 
+
+```{r}
+nn <- neuralnet( object_type_name~ living_area +log_price+population_in_hectare, hidden = c(3), data = house_data.network.train, linear.output = FALSE,stepmax = 1e+8)
+summary(nn)
+
+plot(nn, rep = "best")
+```
+
+The model has been produced sucessfully. It needed 217408 steps to find the best model. The next step is again to use the model to make predictions with the test data. 
+
+```{r}
+# Make the prediction
+
+prediction_nn <- predict(nn,house_data.network.test)
+prediction_nn<-prediction_nn %>% 
+  as_tibble(.name_repair = ~ c("Prob_Wohnung", "Prob_Einfamilienhaus"))
+
+# Chose the object with the highest probability for each row and save it in a new column. 
+
+predict<-1
+
+for(i in 1:length(prediction_nn$Prob_Wohnung)){
+  predict[i]<-if (prediction_nn$Prob_Wohnung[i]>prediction_nn$Prob_Einfamilienhaus[i]) {
+    "Wohnung"
+  } else {
+    "Einfamilienhaus"
+  }
+}
+
+prediction_nn$prediction<-predict
+
+# Show the performance of the neural network model as a table (fit/obs)
+
+d.obs <- data.frame(obs = house_data.network.test$object_type_name,
+fitted = prediction_nn$prediction)
+
+table(d.obs$obs)
+
+table(obs = d.obs$obs,
+fit = prediction_nn$prediction)
+
+data<-data.frame(obs = d.obs$obs,
+fit = prediction_nn$prediction)
+
+```
+
+As we see in the table, there were 491 "Einfamilienhaus" and 1052 "Wohnung" entries to be classified. Our model predicted 297 "Einfamilienhaus" correctly and only 96 "Wohnung" correctly. So this model is not really saitsfying. Lets try another neural network model. So this model classifies a little worse than the more complex one. 
+
+Overall it seems, that used approach and data can't be used to distinguish properly between the two object types. 
+
+
+
