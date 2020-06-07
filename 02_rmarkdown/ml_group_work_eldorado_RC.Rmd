@@ -3,9 +3,9 @@ title: "Applied Machine Learning 01 Group Work"
 author: "Jonas Zürcher, Stephan Wernli, Luca Casuscelli, Dominik Vazquez"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
-  pdf_document:
-    fig_caption: true
-    number_sections: true
+  pdf_document: 
+    fig_caption: yes
+    number_sections: yes
   html_document: default
 theme: united
 toc: yes
@@ -845,7 +845,7 @@ summary(multinom.object_type)
 
 # Tree's
 
-# Regression Tree
+## Regression Tree
 
 In this chapter we want to work with a regression tree. Once more we aim to predict the price with the help of the available predictors. The tree()-function is limited to factorial predictors with 32 classes maximum. So we decided to not use the factorial predictors "zipcode" and "municipality_name". The third factorial predictor "num_rooms" was used as a continuous variable. In the case of a regression tree this can be a valid approach. 
 
@@ -1565,9 +1565,7 @@ The SVM can therefore not make a proper separation of the two classes.
 
 \pagebreak
 
-# Neuronal Network
-
-# Neural network lab
+# Neuronal Networks
 
 The idea behind neural networks is the attempt to imitate the human brain. 
 The neural network is built on three units:
