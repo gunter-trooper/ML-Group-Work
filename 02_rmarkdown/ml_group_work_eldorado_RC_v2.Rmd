@@ -1,0 +1,1762 @@
+---
+title: "Applied Machine Learning 01 Group Work"
+author: "Jonas Zürcher, Stephan Wernli, Luca Casuscelli, Dominik Vazquez"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document: 
+    fig_caption: yes
+    number_sections: yes
+    toc: true
+    toc_depth: 2
+  html_document: default
+theme: united
+
+---
+
+\pagebreak
+
+# Load the libraries and import the dataset
+
+First some basic libraries are loaded.In addition some RMarkdown options are defined and the sampling is set, so it is like in the past before R version 3.6. 
+Finally the data is imported and the columns of interest are selected. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(e1071)  
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+
+# Sampling option
+RNGkind(sample.kind = "Rounding")
+
+house_data <- read_csv("../01_data/house_data.csv")
+
+house_data$object_type_name <- as.factor(house_data$object_type_name)
+
+house_data <- house_data %>% select(object_type_name,
+                                    build_year,
+                                    living_area,
+                                    zipcode,
+                                    municipality_name,
+                                    num_rooms,
+                                    travel_time_private_transport,
+                                    travel_time_public_transport,
+                                    number_of_buildings_in_hectare,
+                                    number_of_apartments_in_hectare,
+                                    number_of_workplaces_in_hectare,
+                                    population_in_hectare,
+                                    water_percentage_1000,
+                                    price)
+```
+
+\pagebreak
+
+# Description of the used data set
+
+The data set contains the following predictors: 
+
+- object_type_name                    categorical                  
+- build_year                          continues
+- living_area                         continues
+- zipcode                             categorical
+- municipality_name                   categorical
+- num_rooms                           count data/categorical
+- travel_time_private_transport       continues
+- travel_time_public_transport        continues 
+- number_of_buildings_in_hectare      count data
+- number_of_apartments_in_hectare     count data
+- number_of_workplaces_in_hectare     count data
+- population_in_hectare               count data
+- water_percentage_1000               count data
+- price                               continues
+
+\pagebreak
+
+
+# Graphical interpretation
+
+## Introduction
+
+In this chapter, we want to get a first understanding of the data we have. In order to do so, we will take a graphical approach in this chapter. 
+
+Using a graphical approach is an efficient and very helpfull way to receive a first understanding on example the distribution of the data. 
+
+As we would like to understand, which variables do have the biggest impact on house prices, the variable *price* is our dependent variable $Y$ against which, we would like to test.
+
+## Import Data
+
+As a first step, we must import the data.
+```{r}
+house_data_graph <- read.csv("../01_data/house_data.csv")
+
+```
+
+In order to make future code more readable, we let R know about the available columns by appyling the *attach* function:
+```{r}
+attach(house_data_graph)
+```
+
+As a next step lets see how many observation we have in the data set by applying the $dim()$ function:
+```{r}
+dim(house_data_graph)
+```
+We do see that we have 22'570 observations. As only a minority has missing values, we can remove these rows in order to avoid issues later on:
+
+```{r}
+house_data_graph = na.omit(house_data_graph)
+```
+
+Lets what variables are available:
+
+```{r}
+names(house_data_graph)
+```
+
+This overview is very helpful, as we can already identify categorical variables and let R know about them by applying the $factor$ function. 
+
+In this case we have identified two categorical variables and we want R to treat them as such before we proceed any further: 
+
+```{r}
+zipcode <- factor(zipcode)
+num_rooms <- factor(num_rooms)
+```
+
+## Scatterplot
+
+As we qualify *price* as a quantitative variable, we can use a scatterplot to have a first overview of the data:
+
+```{r warning=FALSE}
+library(ggplot2)
+ggplot(data = house_data_graph, mapping = aes(y = price, x = build_year)) +
+  geom_point(aes(alpha=0.1, color=object_type_name)) +
+  xlim(1500, 2020)
+```
+
+The scatterplot already gives a first indication: Most of the points seem to be "sit at the bottom-right" of the scatterplot, here between 1 and 2 millions. 
+
+We can therefore expect right-skewed prices. Let's verify this first insight by applying a histogram the the *price* data.
+
+## Histogram
+
+With the historam we want to receive a more ordered view on the data in comparison to the scatterplot. In order to do so we again plot the distribution of house prices but apply a histogram to it:
+
+```{r}
+hist(price)
+```
+
+Here we can clearly see it. The *price* data is right-skewed, or with other words, we don't have normally distributed data. This will be a decisive factor to take into consideration in future chapters, where a log-transformation of the data will be suggested.
+
+In second step we can investigate, if this is valid for every kind of housing type:
+
+```{r message=FALSE, warning=FALSE}
+library(ggplot2)
+ggplot(house_data_graph, aes(x=price)) +
+  geom_histogram(data = subset(house_data_graph, object_type_name=="Einfamilienhaus"),
+                 fill = "red", alpha = 0.2)+
+  geom_histogram(data = subset(house_data_graph, object_type_name=="Mehrfamilienhaus"),
+                 fill = "blue", alpha = 0.2)+
+  geom_histogram(data = subset(house_data_graph, object_type_name=="Sonstiges"),
+                 fill = "green", alpha = 0.2)+
+  geom_histogram(data = subset(house_data_graph, object_type_name=="Wohnung"),
+                 fill = "yellow", alpha = 0.2)+
+  scale_fill_manual(name="Housing types", values=c("red","blue","green","yellow"),
+                      labels=c("Einfamlienhaus", "Mehrfamilienhaus","Sonstiges","Wohnung"))
+
+```
+We do see that the right-skewness for "price" is valid for any type of housing. 
+
+## Types of housings
+
+Out the data frame we do see, that all observations are categorized in four types of objects. Let's see if we see some major differences between them. As it doesn't make sense to compare more than 2-3 variables graphically, we first check on the prices and year these have been built: 
+
+```{r warning=FALSE}
+library(ggplot2)
+qplot(y = price, xlim = c(1500,2020), x = build_year,data = house_data_graph, facets = ~ object_type_name)
+```
+
+It makes sense that once upon a time there where less people and less density resulting in more houses and less apartments being built. Here very well visible. 
+
+Furthermore houses seem to be the most represented object type with the highest value in this sample. Lets have a look at the price distribution per object type by applying boxplots:
+
+```{r}
+ggplot(house_data_graph, aes(object_type_name, price)) + 
+  geom_boxplot(alpha=0) +
+  geom_jitter(alpha=0.03, color = "tomato")
+```
+
+Here we can clearly see, that "Einfamilienhäuser" seem to be the most valuable object. Addionally, the red points indicate, that most of the data is coming from "Einfamilienhaus" and "Wohnungen".
+
+## Correlation matrix
+
+In a next step, we would like to gather a better understanding which variables are correlated to each other. But first we must exlude all non-numeric variables from our data:
+```{r}
+house_data_graph_numeric <- house_data_graph[, sapply(house_data_graph, is.numeric)]
+```
+
+For better visualisation of the column names, we must first rename the very long ones:
+```{r}
+names(house_data_graph_numeric)[8] <- "w%1000"
+names(house_data_graph_numeric)[9] <- "ttime_private"
+names(house_data_graph_numeric)[10] <- "ttime_public"
+names(house_data_graph_numeric)[11] <- "%buildingha"
+names(house_data_graph_numeric)[12] <- "%apartmentsha"
+names(house_data_graph_numeric)[13] <- "%workplaceha"
+names(house_data_graph_numeric)[14] <- "%wpsector1"
+names(house_data_graph_numeric)[15] <- "%wpsector2"
+names(house_data_graph_numeric)[16] <- "%wpsector3"
+names(house_data_graph_numeric)[17] <- "popinha"
+colnames(house_data_graph_numeric)
+```
+
+Now we can check the correlation between all numeric input variables and the output variable price:
+```{r warning=FALSE}
+library(corrr)
+library(dplyr)
+
+cor.price <- house_data_graph_numeric %>%
+  correlate() %>%
+  focus(price)
+
+cor.price
+```
+Out of this table we can already receive the indication that the price seems to be mostly dependent from the variables: "number of rooms" and "living area". 
+
+
+
+Let's visualize and order our findings: 
+```{r}
+library(ggplot2)
+
+cor.price %>%
+  mutate(rowname = factor(rowname, levels = rowname[order(price)])) %>%
+  ggplot(aes(x = rowname, y = price)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust=0.95, vjust=0.2)) +
+  ylab("Correlation with price") +
+  xlab("Variable")
+```
+
+
+## Interaction
+Furthermore, it can be intresting for further analysis wheter the variables do show major influence on each other. If this is the case, these variables are visibilly correlated to each other. For this investigation, we can visualize the correlations amongst the variables:
+```{r warning=FALSE}
+library(corrplot)
+correlations <- cor(house_data_graph_numeric)
+corrplot(correlations, method = "circle", order = "hclust", addrect = 3)
+```
+Following the graphic,we need to expect major interaction between two variable as no strongly correlation between two variables exists.
+
+\pagebreak
+
+# Linear Models
+
+In this chapter we want to take a look at a simple linear regression. The linear regression is a simple but powerful tool to create a model that fits the reality pretty well in a lot of cases. Gernerally the regression coefficents are estimated from data. That means that the coefficents will be approximations in most cases. The estimation is done with the method of "Least Squares". 
+
+In our example we want to predict the prices of real estate by fitting a linear model. In our first model where we fit all the variables we did not use the predictor municipality_name because it fully depends on the zipcode that is already part of the model.
+
+First we have to get an idea how the data looks like. And how the obervations are distributed. That is important because a linear model assumes a normal distribution. 
+
+```{r}
+marks_at <- c(0,1000000,2000000,3000000,4000000)
+marks <- c("0 Mio", "1 Mio", "2 Mio", "3 Mio", "4 Mio")
+hist(house_data$price, xlim=c(0,4000000), xaxt="n", xlab='Price',main='Histogram of Price')
+axis(1,at=marks_at,labels=marks)
+```
+
+As we clearly can see the data is right skewed. That means that we do not have normally distributed data. However we can try to bring the right skwewed data in a normally distributed shape by log()-transforming it. 
+
+```{r}
+hist(log(house_data$price),xlab='log(Price)',main = 'Histogram of log(Price)')
+```
+
+After log()-transforming the data (natural logarithm) we can see a nearly perfect gausian shape of the dependent variable price. So that's clearly the way to go for us here. Hence the result of the log()-transformations gives us a very usefull result. It is not necessary to use a more sophisticated approach like bootstrapping. 
+
+Later it is of course important to back transform the predictions.
+
+Transfromation prior to the fit:
+
+**$Y' = ln(Y)$**
+
+Back-Transformation after predictions of the fitted model:
+
+**\begin{math}\hat{Y} = e^{\hat{Y'}}\end{math}**
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# We work for every model with a separate data set
+house_data_lm <- house_data
+
+# Log-Transform dependent variable
+house_data_lm$price.log <- log(house_data_lm$price)
+
+# Fix the predictors zipcode and num_rooms to be a factor
+house_data_lm$zipcode.fac <- factor(house_data_lm$zipcode)
+house_data_lm$num_rooms.fac <- factor(house_data_lm$num_rooms)
+
+# Fit the model
+lm.fit.1 <- lm(price.log ~ object_type_name + build_year + living_area 
+               + zipcode.fac + num_rooms.fac + travel_time_private_transport 
+               + travel_time_public_transport + number_of_buildings_in_hectare 
+               + number_of_apartments_in_hectare + number_of_workplaces_in_hectare 
+               + population_in_hectare, data = house_data_lm)
+```
+
+The fit of the model takes quite some time. The categorical independent variable zipcode has a lot of classes. To calculate all of the resulting parameters is a quite expensive task. 
+
+Because the variable zipcode leads to so many parameters we restrict the output of the summary() Function. Because it would give us a parameter for every class in the variable. Anyways the interpretation of all of this parameters is not very usefull. We are more interessted at this point if the variable itself is of use or not and in the parameters related to the model itself. 
+
+\fontsize{7}{7} \selectfont
+```{r echo=FALSE}
+options(width = 1500)
+print(summary(lm.fit.1),max=40)
+```
+\fontsize{10}{10} \selectfont
+
+The summary shows us already that the model performs pretty well. We see a multiple R-squared of 0.7 and an adjusted R-squared of about 0.67. The adjusted R-squared takes the complexity of the model into consideration. This could become usefull later when we are going to compare different models.
+
+To check the significance of the variables we could do an Anova Test between a model with a variable and a model without that specific variable. While doing this for every variable we would find out about the variables that contribute to the model. 
+
+There is a more convenient way. The drop1()-function does do that for us. 
+
+\fontsize{7}{7} \selectfont
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+drop1(lm.fit.1, test="F")
+```
+\fontsize{10}{10} \selectfont
+
+The drop1()-function shows us that there are three variables that don't seem to contribute to the model in a significant way. We will now remove those variables and fit a secon modell without them. After that we will compare the two models via an Analysis Of Variance. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Fit the second model
+lm.fit.2 <- lm(price.log ~ object_type_name + build_year + living_area 
+               + zipcode.fac + num_rooms.fac +  number_of_apartments_in_hectare 
+               + number_of_workplaces_in_hectare + population_in_hectare, 
+               data = house_data_lm)
+
+anova(lm.fit.2,lm.fit.1)
+```
+
+The anova shows that the models do not differ in explanatory power in a statistically significant way. The "Residual Sums of Squares" are practiclly the same. And the P-Value for the F-Test is relatively high. So there is strong evidence that both models perfom about the same and that we can leave out the three variables.
+
+Let's have a look at the parameters of the less complex model.
+
+\fontsize{7}{7} \selectfont
+```{r echo=FALSE}
+print(summary(lm.fit.2),max=40)
+```
+\fontsize{10}{10} \selectfont
+
+Again we have restricted the output of parameters. Now we are just interessted in the R-squared values of our less complex model. 
+
+We see that we achieve literally the same R-squared values with the less complex model. This we already expected because of the anova test we did before.
+
+So far we didn't talk about interaction terms in our data. Let's try to find some interactions that could be interessting for our model. We will not use the categorical variables for interactions here because they would lead to a strong increase of parameters. 
+
+First we fit a model with all the interactions we want to investigate.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Fit the second model
+lm.fit.interactions <- lm(price.log ~ object_type_name + zipcode.fac + num_rooms.fac 
+                          + ( build_year + living_area + travel_time_private_transport 
+                              + travel_time_public_transport 
+                              + number_of_buildings_in_hectare 
+                              + number_of_apartments_in_hectare 
+                              + number_of_workplaces_in_hectare 
+                              + population_in_hectare)^2
+                          , data = house_data_lm)
+```
+\fontsize{7}{7} \selectfont
+```{r echo=FALSE}
+print(summary(lm.fit.interactions),max=40)
+```
+\fontsize{10}{10} \selectfont
+
+We already see that for the model that takes interactions into account the R-squared and adjusted R-sqaured are highter than before.
+
+Now we again want to find out if we can remove some of the variables without loosing explanatory power. Therefore we use again the drop1()-function.
+\fontsize{7}{7} \selectfont
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+drop1(lm.fit.interactions, test="F")
+```
+\fontsize{10}{10} \selectfont
+
+For some interactions there is strong evidence that they contribute to the model. We add all interactions that are statistically significant within the significance level of 5%. That means that we add 15 interactions to our model. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Fit the second model
+lm.fit.3 <- lm(price.log ~ object_type_name + build_year + living_area 
+               + zipcode.fac + num_rooms.fac +  number_of_apartments_in_hectare 
+               + number_of_workplaces_in_hectare + population_in_hectare 
+               + build_year:living_area + build_year:travel_time_private_transport 
+               + build_year:number_of_buildings_in_hectare 
+               + build_year:number_of_apartments_in_hectare 
+               + build_year:number_of_workplaces_in_hectare 
+               + build_year:population_in_hectare 
+               + living_area:number_of_buildings_in_hectare 
+               + living_area:number_of_apartments_in_hectare 
+               + travel_time_private_transport:number_of_buildings_in_hectare 
+               + travel_time_private_transport:number_of_apartments_in_hectare 
+               + number_of_buildings_in_hectare:number_of_apartments_in_hectare 
+               + number_of_buildings_in_hectare:population_in_hectare 
+               + number_of_apartments_in_hectare:number_of_workplaces_in_hectare 
+               + number_of_apartments_in_hectare:population_in_hectare 
+               + number_of_workplaces_in_hectare:population_in_hectare
+               , data = house_data_lm)
+```
+\fontsize{7}{7} \selectfont
+```{r echo=FALSE}
+print(summary(lm.fit.3),max=40)
+```
+\fontsize{10}{10} \selectfont
+
+The model that contains the selected interactions matches the data slightly better than the model without the interactions. But is there a statistically significant difference between the models? We compare them by performing an Anova test.
+
+\fontsize{7}{7} \selectfont
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+anova(lm.fit.3,lm.fit.2)
+```
+\fontsize{10}{10} \selectfont
+
+There is again strong evidence that there is a difference between the models. So we choose the model that takes the interactions into account. 
+
+At this point we will stop to further develop the model. But with an adjusted R-squared of 0.688 we found a decent model that is able make some good predictions. 
+
+
+\pagebreak
+
+# Generalised Additiv Models
+
+So far, we have assumed all effects of continuous predictors to be linear. In this chapter we will leave linearity and look for non-linear relationships in the data. 
+
+```{r}
+#required packages
+library(ggplot2)
+library(dplyr)
+
+#We work for every model with a separate data set
+house_data_gam <- house_data
+attach(house_data_gam)
+
+#correct the price skewness and add to data frame
+house_data_gam$price.log <- log(house_data_gam$price)
+
+#define which variables have to be seen as factors
+zipcode.fac <- factor(zipcode)
+
+#limit the number of rooms
+hd_limited_rooms <- filter(house_data_gam, num_rooms < 15 & num_rooms > 0)
+```
+
+## Graphical analysis
+
+As an example let's compare the dependency of price from number of rooms. In order to achieve a better graphical overview, we will limit the number of rooms to be considered to 15 and delete all zeros, as it doesn't make sense that any real estate has zero rooms.
+
+Example price to number of rooms:
+
+```{r}
+library(ggplot2)
+
+gg.price.rooms <- ggplot(data = hd_limited_rooms,
+                         mapping = aes(y = price.log,
+                                       x = num_rooms)) +
+ geom_point()
+
+gg.price.rooms +
+  geom_smooth()
+```
+
+We must consider, that the variance for each category in the number of rooms is fairly high. Indicating, that much more variable do influence the price. At the same time, the curve indicates, that the effect of the price may be not linear.
+
+## Quadratic effects
+
+In this chapter we try to fit a model by adding a qudratic term and compare it to a model with the assumption of linearity. As we have seen in the chapter about Linear Regression, we do not have to consider all variables. So, for simplicity and limitations in computational power, we avoid interactions and only consider the main variables.
+
+```{r}
+# 1) model with linear effect for price.log
+lm.price.1 <- lm(price.log ~ object_type_name + build_year + living_area + num_rooms + number_of_apartments_in_hectare
++ number_of_workplaces_in_hectare + population_in_hectare,
+data = house_data_gam)
+
+# 2) model with quadratic effect for price.log
+lm.price.2 <- update(lm.price.1, . ~ . + I(num_rooms^2))
+
+# We test the quadratic term with a F-Test:
+anova(lm.price.1, lm.price.2)
+
+```
+
+There is a strong evidence, that $num_rooms$ needs a quadratic term. As we could already see visually. 
+
+
+We can now visualize our model on the data:
+
+```{r}
+gg.price.rooms + 
+  geom_smooth(method = "lm", 
+              formula = y ~ poly(x, degree = 2))
+
+```
+
+The value increase seems to be decaying with the numbers of rooms, which we already did see in the first visualisations. Nonetheless, it does not make sense that the value decreases with more than 10 rooms. The model obviously underestimates the price increase for a higher number of rooms. We can therefore try a more complex model.
+
+## More complex non-linear relationships
+
+In this chapter we will have a look at more complex polynomials. Let's try a cubic polynomial to the data before:
+```{r}
+gg.price.rooms + 
+  geom_smooth(method = "lm", 
+              formula = y ~ poly(x, degree = 3))
+
+```
+We can see that with a cubic polynomial we can reduce the error we had with quadratic polynomials in the example before. Now we can model our data with the following model:
+
+```{r}
+lm.cubic <- lm(price.log ~ poly(num_rooms, degree = 3), data = house_data_gam )
+summary(lm.cubic)
+
+```
+We have a R-quared of 0.21, which tells us, that around 21% of the variation is explained by our variable "num_rooms". As we already know, we have many more variables and therefore this is not surprising. Give the number of variables, we think that 21% is fairly good result. 
+
+
+## Build Generalised Additive Models (GAMs)
+
+As a next step we finally reach Generalised Additive Models. These are a very powerfull models to fit non-linear relations with multiple predictiors, as this the case with our data set. 
+
+As first step can allow all most relevant variable to have non-linear, smooth, effect. And select on which ones there is significance out of the result.
+
+```{r warning=FALSE}
+library(mgcv)
+gam.price.1 <- gam(price.log ~ object_type_name + s(build_year) + s(living_area) + s(num_rooms) + s(number_of_apartments_in_hectare)
++ s(number_of_workplaces_in_hectare) + s(population_in_hectare),data = house_data_gam)
+summary(gam.price.1)
+```
+
+As we can see out of the summary, all variables seem to have a fairly high edf (estimated degree of freedom) and do therefore not stand in linear relationship to the price.
+
+We can try to optimize our model by removing the least relevant smoothing factors and see whether the model does suffer a lot from it:
+
+```{r}
+gam.price.2 <- gam(price.log ~ object_type_name + s(build_year) + s(living_area) + s(num_rooms) + number_of_apartments_in_hectare
++ number_of_workplaces_in_hectare + population_in_hectare,data = house_data_gam)
+summary(gam.price.2)
+```
+
+We do realize, that the smoothing splines are only relevant for 3 variables: build_year, living_area, num_rooms. So we were able to save some computational power without loosing any quality on the model. 
+
+
+## Collinearity of the model
+
+Last but not least we must check the model on collinearity in order to make sure we do not take any wrong conclusions about which variables are of real relevance. For that we can use the vif() function from the {car} package:
+
+```{r warning=FALSE}
+library(car)
+vif(gam.price.2)
+```
+
+The Generalised Variance Inflation Error (GVIF) tell us whether we have to remove a variable. In respect to our model, we do not have any factor above 5. Therefore the model is not affected by collinearity.
+
+\pagebreak
+
+# Generalised Linear Models
+
+Generalised Linear Models (GLM) are a group of models. The Poisson, the Binomial, the Binary and the Multinominal models are all members of GLM. They are an extension of the Linear Model to deal with particular types of data.They have in common that all assume a specific distribution of the data and use a link function for the model.
+
+## The Poisson model
+
+Lets start with the binomial model. In this section we would like to evaluate for what kind of data this model is the better choice compared to the basic Linear model. 
+
+### Preparation
+
+First we prepare the house data for the analysis. We would like to compare three different groups in matter of number of workplaces in a hectare.
+
+Therefore we produce three groups for the number_of_workplaces_in_hectare count data:
+"1. Low industrialized" are all entries with only 0-25 workplaces in a hectare.
+"2. Moderate industrialized" are all entries with 26 to 50 workplaces in a hectare.
+"3. Highly industrialized" are all entries with more than 50 workplaces in a hectare.
+
+```{r}
+house_data.workplace<-house_data
+
+# Using a group function to build groups of count data
+
+getgroup<-function(n) {
+   if(n >= 0 & n<=25 ) {
+      "1. Low industrialized"
+    } else if(n > 25 & n<=50 ) {
+      "2. Moderate industrialized"
+    }else {
+      "3. Highly industrialized"
+    }
+}
+
+house_data.workplace$group<-sapply(house_data.workplace$number_of_workplaces_in_hectare,getgroup)
+
+house_data.workplace$group<-as.factor(house_data.workplace$group)
+
+```
+
+### Boxplot
+
+Lets have a closer look a the data with a boxplot. The boxplot shows three well distinguished groups.  
+
+```{r}
+ggplot(data=house_data.workplace,
+       mapping =aes(y=number_of_workplaces_in_hectare,
+                    x=group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+### Build a Linear model
+
+The next step is to fit a linear model, because it is the simplest model to describe data. 
+
+```{r}
+lm.workplaces <- lm(number_of_workplaces_in_hectare ~ group, data = house_data.workplace)
+round(coef(lm.workplaces), digits = 10)
+```
+
+The estimates look ok, if we round them. We have 3 workplaces for low industrialized areas, 30 workplaces for moderated industrialzed areas and 73 workplaces for highly industrialzed areas
+
+### Simulate data with the linear model
+
+Now we control the model by simulating new data and check if the linear model produces realistic new data. We also produce a boxplot of the new data. 
+
+```{r}
+set.seed(4)
+sim.workplaces <- simulate(lm.workplaces)
+
+head(sim.workplaces)
+
+ggplot(data=sim.workplaces,
+       mapping =aes(y=sim_1,
+                    x=house_data.workplace$group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+As we see in the simulated data. There are workplaces counts below zero, which is not possible, but typical for a Linear model. Also the values are numeric and not integers as needed in this case. Furthermore the variability doesn't increase with the mean value of the groups. This needs improvment. The solution is to use a Poisson model. The Possion model only allows values above zero.  
+
+### Build a Poisson model 
+
+Lets fit the data with a Possion model. By using this apporach the data is transformed with the exponential function to avoid negative values. Furthermore we assume a Possion distribution so the variance of the observations depends on the mean values and the simulated values are all integers. 
+
+```{r}
+glm.workplaces<-glm(number_of_workplaces_in_hectare ~ group,
+               family="poisson", 
+               data=house_data.workplace)
+summary(glm.workplaces)
+```
+
+Then we simulate new data by using the fitted Poisson model and plot it.
+
+```{r}
+set.seed(4)
+sim.data.workplaces_2 <- simulate(glm.workplaces)
+NROW(sim.data.workplaces_2)
+head(sim.data.workplaces_2)
+tail(sim.data.workplaces_2)
+
+ggplot(data=sim.data.workplaces_2,
+       mapping =aes(y=sim_1,
+                    x=house_data.workplace$group)
+         ) +
+  geom_boxplot()+
+  xlab("Industrialization level of the area")+
+  ylab("Number of workplaces in a hectare")
+```
+
+Now the simulated data looks realistic. The variability increases with increasing count and there are now values below zero. Also the simulated values are integers. Using the Poisson model in this case reflects the reality way better then the Linear model. 
+
+## Binomial model
+
+The next model we would like to explorate is the binomial model. 
+
+### Preparation
+
+Our data doesn't have a entries with binomial data. Therefore we create a binomial data with the number of workplaces in a hectare. For this we assume the highest entry is the highest possible entry and therefore 100 %. All others entries are now transformed into a percentage value in respect to the maximal entry. Furthermore a failure column is produced by substract each value from the max value. This column will be needed to build the binomial model. 
+
+```{r}
+house_data.binomial<-house_data
+
+max.workplace<-max(house_data.binomial$number_of_workplaces_in_hectare)
+
+workplace_coverage<-house_data.binomial$number_of_workplaces_in_hectare/
+  max.workplace
+house_data.binomial$workplace_coverage<-workplace_coverage
+  
+
+# Make a column with pseudo failure entries
+
+house_data.binomial$failure<-max.workplace-house_data.binomial$number_of_workplaces_in_hectare
+```
+
+### Build a Linear model
+
+First we fit the data again with a Linear model, because it is the simplest model to describe data. 
+
+```{r}
+lm.workplaces_coverage <- lm(workplace_coverage ~ population_in_hectare, data = house_data.binomial)
+
+round(coef(lm.workplaces_coverage), digits = 10)
+```
+
+
+### Visualization of the Linear model
+
+Lets plot the workplace coverage with the population in hectare together and a Linear fit. 
+
+```{r}
+ggplot(data = house_data.binomial,
+mapping = aes(y = workplace_coverage,
+x = house_data.binomial$population_in_hectare)) +
+  geom_point(size=1)+
+  geom_smooth(method = "lm", se = FALSE) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1,col="grey")+
+  xlab("Population in hectare")+
+  ylab("Workplace coverage")
+```
+
+We see a slight positive trend in the plot. But we can't be happy yet. With the Linear model fit we could get prediction values outside the range of 0 % and 100 %, which is not possible. Even fitted values could lay outside this range. Therefore we need the binomial model. 
+
+### Build a Binomial model
+
+We will transform the data with the logit function. With this function the values are always between 0 and 1. We achieve this by fitting the data with a Binomial model. In addition we assume a Binomial distribution. 
+
+```{r}
+glm.workplace_coverage<-glm(cbind(house_data.binomial$number_of_workplaces_in_hectare,house_data.binomial$failure)~population_in_hectare,family="binomial",data= house_data.binomial)
+
+summary(glm.workplace_coverage)
+```
+
+### Simulate data with the Binomial model 
+
+To see if our new model works, we simulated new dataframe with 100 predicted values by using the Binomial model. 
+
+```{r}
+new.data = data.frame(population_in_hectare = seq(0, 1000, length.out = 100))
+new.data$pred.workplace_coverage <- predict(glm.workplace_coverage, newdata = new.data,
+                                 type = "response")
+```
+
+### Visualized the simulated binomial data
+
+Now we plot the real data (red) together with the simulated data (black). We chose to simulated data with a higher population in hectare number than in the real data to shows a better visualization of the used model.
+
+```{r}
+ggplot(data = house_data.binomial,
+mapping = aes(y = workplace_coverage,
+x = house_data.binomial$population_in_hectare)) +
+  geom_point(col="red",size=1)+
+  geom_point(data = new.data,
+               mapping = aes(
+      y = pred.workplace_coverage,
+      x = population_in_hectare),size=1) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1, col="gray")+
+  xlab("Population in hectare")+
+  ylab("Workplace coverage")
+```
+
+The plot shows, that a higher population in hectare results in a higher workplace coverage. 
+
+## Binary model
+
+We would also like to use a Binary model to identify the object type by using the price, the number of rooms and living area. Since we don't have any by default, we have to make some data preparation.
+
+### Preparation
+
+First we prepare a dataset only containing the two object types: "Wohnung" or "Others".
+
+```{r}
+house_data.binary<-house_data
+
+getbinary<-function(p) {
+   if(p=="Wohnung") {
+      1 
+    } else {
+      0
+    }
+}
+
+house_data.binary$binary_code<-sapply(house_data.binary$object_type_name,getbinary)
+```
+
+### Fit the Binary model
+
+Binary data is a special case of binomial data and ist therefore also fitted with a Binomial model. In this special case we can even use the model to classify new samples. Here this would be to evaluate what object type we get for a given population in hectare. The best fit of the model is chosen by evaluate the maximum likelihood.  
+
+
+```{r}
+glm.object_type<-glm(binary_code~population_in_hectare,family="binomial",data= house_data.binary)
+summary(glm.object_type)
+```
+
+### Simulate data with the fitted Binary model
+
+The next step is to simulate data with the evaluated model.
+
+```{r}
+new.data2 = data.frame(population_in_hectare = seq(0, 500, length.out = 100))
+new.data2$pred.object_type <- predict(glm.object_type, newdata = new.data2,
+                                 type = "response")
+```
+
+### Visualization of the simulated data 
+
+The simulated data (black) is now plotted together with the real data. We see that higher population in hectare results in higher probability that the object type is "Wohnung"
+
+```{r}
+ggplot(data = house_data.binary,
+mapping = aes(y = binary_code,
+x = population_in_hectare)) + 
+  geom_point(col="red",size=1)+
+  geom_point(data = new.data2,
+               mapping = aes(
+      y = pred.object_type,
+      x = population_in_hectare),size=1) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0:1,col="grey")+
+  xlab("Population_in_hectare")+
+  ylab("Object type: 1 (Wohnung) or 0 (Others)")
+
+```
+
+### Estimate the performance of the Binary model
+
+Now, lets have a look have good the perfomance of our Binary model is. For this we have to compare the real data (observed) with the fitted data. Therefore we first discretise the fitted values into 0 and 1. 
+
+```{r}
+fitted.object.disc <- ifelse(fitted(glm.object_type) < 0.5,
+yes = 0, no = 1)
+head(fitted.object.disc)
+```
+
+Then we make a dataframe with the real data and the fitted data and display them.
+
+```{r}
+d.obs.fit.object <- data.frame(obs = house_data.binary$binary_code,
+fitted = fitted.object.disc)
+
+table(d.obs.fit.object$obs)
+
+table(obs = d.obs.fit.object$obs,
+fit = d.obs.fit.object$fitted)
+```
+
+As we see, there were 9131 object with the type "Others" and 13439 with the type "Wohnung". The model classifies 11992 out of 13439 "Others" and 2748 "Wohnung" out of 9131 correctly. This means that our Binary model classifies the object type "Others" way better than the object type "Wohnung". 
+
+## Multinomial model
+
+The last section is about building a Multinomial model
+
+### Preparation
+
+This time we use all object types.
+
+```{r}
+house_data.multinomial<-house_data
+```
+
+### Fit a Multinomial model
+
+Finally we can fit the model with the data. The summary of the model is not commented, because its beyond the topic of this course. 
+
+```{r}
+library(nnet)
+
+multinom.object_type<-multinom(object_type_name~population_in_hectare,data=house_data.multinomial)
+
+summary(multinom.object_type)
+ 
+```
+\pagebreak
+
+# Regression Tree
+
+In this chapter we want to work with a regression tree. Once more we aim to predict the price with the help of the available predictors. The tree()-function is limited to factorial predictors with 32 classes maximum. So we decided to not use the factorial predictors "zipcode" and "municipality_name". The third factorial predictor "num_rooms" was used as a continuous variable. In the case of a regression tree this can be a valid approach. 
+
+In the previous chapters we already found out that the price is right skewed and therefore we log() transform the price what leads to nearly perfect bell shape. 
+
+In our first try we want to grow our tree as big as possible to see how far we can go with this approach. After some experimenting with the data we ended up with a mindev=0.00005 that still doesn't exceed the maximum depth and leads to a tree with 1493 nodes. 
+
+```{r warning=FALSE}
+library(ISLR)
+library(tree)
+
+# We work for every model with a separate data set
+house_data_trees <- house_data
+
+# Log-Transform dependent variable
+house_data_trees$price.log <- log(house_data_trees$price)
+ 
+# Fix the predictors zipcode and num_rooms to be a factor
+house_data_trees$zipcode.fac <- factor(house_data_trees$zipcode)
+house_data_trees$num_rooms.fac <- factor(house_data_trees$num_rooms)
+
+house_data_trees.model <-  tree(price.log ~  
+                            object_type_name +
+                            build_year +
+                            living_area +
+#                            zipcode.fac +
+                            num_rooms +
+                            travel_time_private_transport +
+                            travel_time_public_transport +
+                            number_of_buildings_in_hectare +
+                            number_of_apartments_in_hectare +
+                            number_of_workplaces_in_hectare +
+                            population_in_hectare +
+                            water_percentage_1000,
+                            data = house_data_trees, 
+                            mindev=0.00005)
+ 
+summary(house_data_trees.model)
+
+```
+
+This approach has of course several issues that we will address later. For example we used all data for training and didn't spare any of it for the test phase. And we didn't prune the tree yet what should result in a huge variance and over-fitting. 
+
+It doesn't make any sense to plot a tree of this size. But anyways we want to show graphically how good we can predict the log()-transformed price with the regression tree by plotting the back-transformed prediction and the original data.
+
+```{r}
+house_data_trees.model.pred <- 
+  predict(house_data_trees.model, house_data_trees , type="vector")
+
+plot(exp(house_data_trees.model.pred),house_data_trees$price)
+```
+
+We take a look at the back-transformed data because differences in the part of the data with higher values are more pronounced. Anyway it looks like we could achieve some correlation between our data and the prediction. Let's find out about the error that is included in our predictions.
+
+```{r}
+house_data_trees.model.pred.error <- 
+  house_data_trees.model.pred - house_data_trees$price.log
+element_ID <- 1:length(house_data_trees.model.pred.error)
+
+ggplot() + geom_boxplot(aes(y=house_data_trees.model.pred.error))
+```
+```{r}
+hist(house_data_trees.model.pred.error)
+```
+The residuals seem to be pretty much normally distributed. There are some outliers but we consider the data to be in bell shape well enough. 
+
+Now we want to calculate the Residual Sum of Squares and the Mean Square Error for our predictions. 
+
+```{r}
+house_data_trees.model.pred.RSS <- 
+  sum((house_data_trees$price.log - house_data_trees.model.pred)^2)
+house_data_trees.model.pred.MSE <-
+  house_data_trees.model.pred.RSS/length(house_data_trees.model.pred)
+house_data_trees.model.pred.deviation <- 
+  sqrt(house_data_trees.model.pred.MSE) 
+
+plot(element_ID,house_data_trees.model.pred.error)
+title(main="Analysis of the residuals (with average)")
+abline(0 ,0, lwd=3,lty="dotted")
+abline(house_data_trees.model.pred.deviation ,0, lwd=2, col="red", lty="longdash")
+abline((house_data_trees.model.pred.deviation * -1) ,0, lwd=2, col="red", lty="longdash")
+
+```
+RSS: `r house_data_trees.model.pred.RSS`  
+MSE: `r house_data_trees.model.pred.MSE`  
+Deviation: `r house_data_trees.model.pred.deviation`  
+
+Now let's have a look how the result changes if we split the data in a train and a test set. 
+
+```{r}
+set.seed(1)
+house_data_trees.size <- nrow(house_data_trees)
+train_set.size <- house_data_trees.size * 0.7
+
+house_data_trees.train.idx <- sample(1:house_data_trees.size, as.integer(train_set.size))
+
+house_data_trees.model2 <-  tree(price.log ~  
+                            object_type_name +
+                            build_year +
+                            living_area +
+#                            zipcode.fac +
+                            num_rooms +
+                            travel_time_private_transport +
+                            travel_time_public_transport +
+                            number_of_buildings_in_hectare +
+                            number_of_apartments_in_hectare +
+                            number_of_workplaces_in_hectare +
+                            population_in_hectare +
+                            water_percentage_1000,
+                            data = house_data_trees, 
+                            mindev=0.00005,
+                            subset=house_data_trees.train.idx
+                            ) 
+ 
+summary(house_data_trees.model2)
+```
+As we expect we get a model with slightly different results. 
+
+```{r}
+
+# Predict with Train-Set
+house_data_trees.model2.pred.train <- 
+  predict(house_data_trees.model2, 
+          house_data_trees[house_data_trees.train.idx,], 
+          type="vector")
+
+# Train-Set Error
+house_data_trees.model2.pred.train.errors <-
+  house_data_trees[house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model2.pred.train
+
+# Train-Set RSS
+house_data_trees.model2.pred.train.RSS <- 
+  sum(house_data_trees.model2.pred.train.errors^2)
+
+# Train-Set MSE
+house_data_trees.model2.pred.train.MSE <-
+  house_data_trees.model2.pred.train.RSS / 
+  length(house_data_trees.model2.pred.train)
+
+# Train-Set Deviation
+house_data_trees.model2.pred.train.deviation <- 
+  sqrt(house_data_trees.model2.pred.train.MSE) 
+
+# Predict with Test-set
+house_data_trees.model2.pred.test <- 
+  predict(house_data_trees.model2,
+          house_data_trees[-house_data_trees.train.idx,], 
+          type="vector")
+
+# Test-Set Error
+house_data_trees.model2.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model2.pred.test
+
+# Test-Set RSS
+house_data_trees.model2.pred.test.RSS <- 
+  sum(house_data_trees.model2.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model2.pred.test.MSE <-
+  house_data_trees.model2.pred.test.RSS / 
+  length(house_data_trees.model2.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model2.pred.test.deviation <- 
+  sqrt(house_data_trees.model2.pred.test.MSE) 
+  
+# Construct Dataframe for display of Errors
+# Train-Set
+element_ID2.train <- as.integer(
+  names(house_data_trees.model2.pred.train.errors))
+
+house_data_trees.model2.pred.train.errors.df <-
+  tibble(element_ID2.train,
+         house_data_trees.model2.pred.train.errors,
+         "Train" )
+
+colnames(house_data_trees.model2.pred.train.errors.df) <- 
+  c('ID','error','type')
+
+# Test-Set
+element_ID2.test <- as.integer(
+  names(house_data_trees.model2.pred.test.errors)) + 
+  max(element_ID2.train)
+
+house_data_trees.model2.pred.test.errors.df <-
+  tibble(element_ID2.test,
+         house_data_trees.model2.pred.test.errors,
+         "Test" )
+
+colnames(house_data_trees.model2.pred.test.errors.df) <- 
+  c('ID','error','type')
+
+# Combine Dataframes
+house_data_trees.model2.pred.errors.df <-
+  rbind(house_data_trees.model2.pred.test.errors.df,
+        house_data_trees.model2.pred.train.errors.df)
+house_data_trees.model2.pred.errors.df <- 
+  arrange(house_data_trees.model2.pred.errors.df, ID)
+
+ggplot(data = house_data_trees.model2.pred.errors.df, 
+       mapping = aes(x = ID,y = error, color = type)) + 
+  geom_point() + 
+  geom_boxplot(alpha = 0.5)
+
+```
+Training-Set:  
+RSS: `r house_data_trees.model2.pred.train.RSS`  
+MSE: `r house_data_trees.model2.pred.train.MSE`  
+Deviation: `r house_data_trees.model2.pred.train.deviation` 
+
+Test-Set:
+RSS: `r house_data_trees.model2.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pred.test.deviation`  
+
+We can clearly see that the prediction on the test set is performing worse than the prediction on the training set. This is because the tree was grown with the training set and is better fitting the training data than the test data. This means that the tree is over-fitting. This was expected because we still use a fully grown tree.
+
+We want to increase the performance of our tree. That means that we want to reduce the over-fitting or in other words the variance.
+
+There are several techniques to achieve this. First we will take a look at pruning. 
+
+## Pruning
+Now we want to find out if pruning would improve our results and reduce the over-fitting. We use cost-complexity pruning because cross-validation pruning can be computationally very costly.
+
+```{r}
+house_data_trees.model2.pruning = cv.tree(house_data_trees.model2, FUN = prune.tree, K=10)
+plot(house_data_trees.model2.pruning)
+```
+We can see that the deviance in this huge tree is falling very quickly. 
+
+Let us now investigate the influence of the tree size and the alpha (k) on the deviance of the tree. It is important not to confuse the parameter K (big) of the cross-validation that determines the K-th fold of the CV with the result k (little) that corresponds to the alpha of the cost-complexity pruning.
+
+```{r}
+house_data_trees.model2.pruning.cv_size <- 
+  house_data_trees.model2.pruning$size[max(which(house_data_trees.model2.pruning$dev == 
+                                               min(house_data_trees.model2.pruning$dev)))]
+
+house_data_trees.model2.pruning.cv_alpha <- 
+  house_data_trees.model2.pruning$k[max(which(house_data_trees.model2.pruning$dev == 
+                                               min(house_data_trees.model2.pruning$dev)))]
+
+par(mfrow=c(1,2))
+plot(house_data_trees.model2.pruning$size, house_data_trees.model2.pruning$dev, type="b")
+plot(house_data_trees.model2.pruning$k, house_data_trees.model2.pruning$dev, type="b")
+par(mfrow=c(1,1))
+
+```
+The graphs are hard to read because of the huge node count of the tree. But we can determine the parameters from the data frame.
+
+The Cross-Validation shows a minimal deviance for the following parameters:
+
+Tree-Size: `r house_data_trees.model2.pruning.cv_size`  
+
+Alpha (k): `r house_data_trees.model2.pruning.cv_alpha`  
+
+Now we will prune the tree to match the node count we got from the cross validation. And check whether the tree is able to fit the test set better. 
+
+```{r}
+house_data_trees.model2.pruned <- 
+  prune.tree(house_data_trees.model2, 
+             best = house_data_trees.model2.pruning.cv_size)
+
+plot(house_data_trees.model2.pruned)
+text(house_data_trees.model2.pruned, pretty=1, cex=0.55)
+```
+The resulting tree is small enough again to plot it. 
+
+```{r}
+# Predict with Test-set and pruned tree
+house_data_trees.model2.pruned.pred.test <- 
+  predict(house_data_trees.model2.pruned,
+          house_data_trees[-house_data_trees.train.idx,], 
+          type="vector")
+
+# Test-Set Error
+house_data_trees.model2.pruned.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model2.pruned.pred.test
+
+# Test-Set RSS
+house_data_trees.model2.pruned.pred.test.RSS <- 
+  sum(house_data_trees.model2.pruned.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model2.pruned.pred.test.MSE <-
+  house_data_trees.model2.pruned.pred.test.RSS / 
+  length(house_data_trees.model2.pruned.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model2.pruned.pred.test.deviation <- 
+  sqrt(house_data_trees.model2.pruned.pred.test.MSE) 
+
+```
+
+Test-Set with fully grown tree:  
+RSS: `r house_data_trees.model2.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pred.test.deviation`  
+
+Test-Set with pruned tree:  
+RSS: `r house_data_trees.model2.pruned.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pruned.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pruned.pred.test.deviation`  
+
+The result is disappointing. The un-pruned tree is performing better on the test-set. We used the size for the 'best' parameter  of the prune.tree() method with the lowest deviance. But the pruned tree is not performing better on the test-set. That was not expected.
+
+We observed that the cv.tree() function returns a deviance that was not expected. The deviance reduces until the 10th node and after that it stays constant. It is possible that there is a problem with the determination of the deviance after the 10th node. 
+
+It is also possible that our test-set is by chance a set that doesn't perform well, but that our pruned tree will generalize better.
+
+## Bagging
+Now we want to find out if we can improve the performance with bagging. We will use 25 bags. 
+
+```{r warning=FALSE}
+library(ipred)
+
+house_data_trees.model.bag <- bagging(price.log ~  
+                            object_type_name +
+                            build_year +
+                            living_area +
+                            num_rooms +
+                            travel_time_private_transport +
+                            travel_time_public_transport +
+                            number_of_buildings_in_hectare +
+                            number_of_apartments_in_hectare +
+                            number_of_workplaces_in_hectare +
+                            population_in_hectare +
+                            water_percentage_1000,
+                            data = house_data_trees, 
+                            subset=house_data_trees.train.idx,
+                            nbagg=25,
+                            coob=TRUE
+)
+print(house_data_trees.model.bag)
+```
+
+```{r}
+house_data_trees.model.bag.pred.test <- 
+  predict(house_data_trees.model.bag, 
+          newdata = house_data_trees[-house_data_trees.train.idx,])
+
+# Bagging
+# Test-Set Error
+house_data_trees.model.bag.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model.bag.pred.test
+
+# Test-Set RSS
+house_data_trees.model.bag.pred.test.RSS <- 
+  sum(house_data_trees.model.bag.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model.bag.pred.test.MSE <-
+  house_data_trees.model.bag.pred.test.RSS / 
+  length(house_data_trees.model.bag.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model.bag.pred.test.deviation <- 
+  sqrt(house_data_trees.model.bag.pred.test.MSE) 
+
+```
+
+Test-Set with fully grown tree:  
+RSS: `r house_data_trees.model2.pred.test.RSS`  
+MSE: `r house_data_trees.model2.pred.test.MSE`  
+Deviation: `r house_data_trees.model2.pred.test.deviation`  
+
+Test-Set with bagging:  
+RSS: `r house_data_trees.model.bag.pred.test.RSS`  
+MSE: `r house_data_trees.model.bag.pred.test.MSE`  
+Deviation: `r house_data_trees.model.bag.pred.test.deviation`  
+
+With bagging the predictions on the Test-Set get slightly better. 
+
+## Random Forests
+Now we take a look at random forests. We will use 3 Parameters (Square Root of 11 Parameters).
+
+```{r warning=FALSE}
+library(randomForest)
+
+house_data_trees.model.rf <- randomForest(price.log ~  
+                              object_type_name +
+                              build_year +
+                              living_area +
+                              num_rooms +
+                              travel_time_private_transport +
+                              travel_time_public_transport +
+                              number_of_buildings_in_hectare +
+                              number_of_apartments_in_hectare +
+                              number_of_workplaces_in_hectare +
+                              population_in_hectare +
+                              water_percentage_1000,
+                              data = house_data_trees, 
+                              subset=house_data_trees.train.idx,
+                              mtry=3,
+                              importance=TRUE
+)
+
+importance(house_data_trees.model.rf)
+
+```
+
+We can see that there are some important predictors like living_area, build_year, travel_time_public_transport. It is pretty counter intuitive that num_rooms doesn't seem to be important. 
+
+```{r}
+house_data_trees.model.rf.pred.test <- 
+  predict(house_data_trees.model.rf, 
+          newdata = house_data_trees[-house_data_trees.train.idx,])
+
+# Bagging
+# Test-Set Error
+house_data_trees.model.rf.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model.rf.pred.test
+
+# Test-Set RSS
+house_data_trees.model.rf.pred.test.RSS <- 
+  sum(house_data_trees.model.rf.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model.rf.pred.test.MSE <-
+  house_data_trees.model.rf.pred.test.RSS / 
+  length(house_data_trees.model.rf.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model.rf.pred.test.deviation <- 
+  sqrt(house_data_trees.model.rf.pred.test.MSE) 
+
+```
+
+Test-Set with bagging:  
+RSS: `r house_data_trees.model.bag.pred.test.RSS`  
+MSE: `r house_data_trees.model.bag.pred.test.MSE`  
+Deviation: `r house_data_trees.model.bag.pred.test.deviation`  
+
+Test-Set with Random Forest:  
+RSS: `r house_data_trees.model.rf.pred.test.RSS`  
+MSE: `r house_data_trees.model.rf.pred.test.MSE`  
+Deviation: `r house_data_trees.model.rf.pred.test.deviation`  
+
+So far the Random Forest approach could improve the predictions on the test-set the most.
+
+## Boosting
+Finally we want to take a look at boosting and if we can achieve a further improvement with it. We use gaussian distribution because it is a regression tree. 
+
+```{r warning=FALSE}
+library(gbm)
+
+house_data_trees.model.boost <- 
+                          gbm(price.log ~  
+                              object_type_name +
+                              build_year +
+                              living_area +
+                              num_rooms +
+                              travel_time_private_transport +
+                              travel_time_public_transport +
+                              number_of_buildings_in_hectare +
+                              number_of_apartments_in_hectare +
+                              number_of_workplaces_in_hectare +
+                              population_in_hectare +
+                              water_percentage_1000,
+                              data = house_data_trees[house_data_trees.train.idx,], 
+                              distribution="gaussian",
+                              n.trees=5000,
+                              interaction.depth=2
+)
+
+summary(house_data_trees.model.boost,plotit=FALSE)
+```
+
+Again the living_area, travel_time_public_transport and build_year seam to be important predictors. But we can see here that the ranks of travel_time_public_transport and build_year are swapped.
+
+```{r}
+house_data_trees.model.boost.pred.test <- 
+  predict(house_data_trees.model.boost, 
+          newdata = house_data_trees[-house_data_trees.train.idx,],
+          n.trees=5000)
+
+# Bagging
+# Test-Set Error
+house_data_trees.model.boost.pred.test.errors <-
+  house_data_trees[-house_data_trees.train.idx,]$price.log - 
+  house_data_trees.model.boost.pred.test
+
+# Test-Set RSS
+house_data_trees.model.boost.pred.test.RSS <- 
+  sum(house_data_trees.model.boost.pred.test.errors^2)
+
+# Test-Set MSE
+house_data_trees.model.boost.pred.test.MSE <-
+  house_data_trees.model.boost.pred.test.RSS / 
+  length(house_data_trees.model.boost.pred.test)
+
+# Test-Set Deviation
+house_data_trees.model.boost.pred.test.deviation <- 
+  sqrt(house_data_trees.model.boost.pred.test.MSE) 
+
+```
+
+Test-Set with Random Forest:  
+RSS: `r house_data_trees.model.rf.pred.test.RSS`  
+MSE: `r house_data_trees.model.rf.pred.test.MSE`  
+Deviation: `r house_data_trees.model.rf.pred.test.deviation`  
+
+Test-Set with Boosting:  
+RSS: `r house_data_trees.model.boost.pred.test.RSS`  
+MSE: `r house_data_trees.model.boost.pred.test.MSE`  
+Deviation: `r house_data_trees.model.boost.pred.test.deviation`  
+
+Boosting again improved the predictions on the test-set. It is our final regression tree model we choose. 
+
+We could repeat all of this now for a classification tree. But the approach is basically the same. 
+
+\pagebreak
+
+# Support vector machines
+
+## Support vector machines
+
+The following chapter covers Support Vectore Machines. These are used to handle classification problems with a margin between separation points and their support vectors. 
+In the following case, an attempt is made to classify the type of the residential object using price, number of rooms and  living area as predictors.
+
+to improve the initial state of classification, only two classes are provided to the SVM. In addition, outliers in terms of the size of the living area and the number of rooms have been restricted.
+
+```{r results = 'hide'}
+house_data_svm <- house_data
+
+# Log-Transform dependent variable
+house_data_svm$price.log <- log(house_data_svm$price)
+# Fix the predictors zipcode and num_rooms to be a factor
+house_data_svm$zipcode.fac <- factor(house_data_svm$zipcode)
+house_data_svm$num_rooms.fac <- factor(house_data_svm$num_rooms)
+
+house_data_svm <- house_data_svm %>% filter(object_type_name ==  "Einfamilienhaus"|object_type_name ==  "Wohnung")
+house_data_svm <- house_data_svm %>% filter(living_area <= 1000)
+house_data_svm <- house_data_svm %>% filter(num_rooms <= 20)
+
+house_data_svm <- house_data_svm %>%  droplevels()
+house_data_svm$object_type_name %>%  unique()
+
+## 75% of the sample size
+smp_size <- floor(0.75 * nrow(house_data_svm))
+
+## set the seed to make your partition reproducible
+set.seed(1)
+train_ind <- sample(seq_len(nrow(house_data_svm)), size = smp_size)
+house_train <- house_data_svm[train_ind, ]
+house_test <- house_data_svm[-train_ind, ]
+
+```
+
+## Graphical analysis of the separating variables
+
+The following plots should show how well the fed-in variables separate a classification of the two classes apartment and single family house.
+
+The first plot shows how the variable room numbers separate the two classes. 
+In this plot you can see that an apartment has less rooms than a family house. This fact could be used for a separation.
+Furthermore it is obvious that the number of rooms in the range up to 10 rooms cannot be used as a separation criterion.
+
+
+```{r echo=FALSE}
+ggplot(house_data_svm, aes(y=num_rooms, x=object_type_name)) + geom_point()
+```
+
+The second plot shows how the variable living area separates the two classes. 
+The plot shows that the apartments contain a much smaller living space. 
+The variable should therefore to a certain degree support a clean separation.
+However, it can also be seen that there is a certain overlap in the lower area of the living space. 
+the influence of this fact for the separation can not yet be estimated.
+
+
+```{r echo=FALSE}
+ggplot(house_data_svm, aes(y=living_area, x=object_type_name)) + geom_point()
+```
+
+
+The last plot shows how far the classes can be distinguished by the logarithmic price.
+It can be seen that the price for both classes is distributed almost identically. 
+From a graphical point of view, the price is therefore only conditionally suitable for a separation.
+
+
+```{r echo=FALSE}
+ggplot(house_data_svm, aes(y=price.log, x=object_type_name)) + geom_point()
+```
+
+Now that the data for the problem is prepared, we try to apply the SVM to it.
+in the following section three different kernels (linear,sigmoid,radial) are used, all of them having received the same date for classification.
+
+
+
+## SVM with linear kernel
+
+The following code block shows the configuration of SVM with linear kernel.
+
+
+```{r results = FALSE , message=FALSE, warning=FALSE}
+number_of_observations <- 200
+cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
+svm.models <- tune(
+  svm,
+  object_type_name ~ price.log + living_area + num_rooms,
+  data = house_train %>% top_n(number_of_observations),
+  kernel = "linear",
+  ranges = list(cost = cost_range),
+  scale = TRUE)
+
+svm.models <- svm.models$best.model
+summary(svm.models)
+
+
+```
+```{r echo=FALSE , message=FALSE, warning=FALSE}
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
+```
+
+```{r echo=FALSE , message=FALSE, warning=FALSE}
+
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
+
+```
+
+```{r}
+
+table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
+```
+
+
+
+## SVM with sigmoid kernel
+
+
+The following code block shows the configuration of SVM with sigmoid kernel.
+
+
+```{r results = FALSE , message=FALSE, warning=FALSE}
+number_of_observations <- 10000
+cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
+svm.models <- tune(
+  svm,
+  object_type_name ~ price.log + living_area + num_rooms,
+  data = house_train %>% top_n(number_of_observations),
+  kernel = "sigmoid",
+  ranges = list(cost = cost_range),
+  scale = TRUE)
+svm.models <- svm.models$best.model
+summary(svm.models)
+
+
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
+
+```
+
+```{r}
+
+table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
+```
+
+## SVM with radial kernel
+
+The following code block shows the configuration of SVM with radial kernel.
+
+```{r results = FALSE , message=FALSE, warning=FALSE}
+number_of_observations <- 1000
+cost_range <- c(0.000005, 0.005,0.1,1,10,100,1000,10000)
+svm.models <- tune(
+  svm,
+  object_type_name ~ price.log + living_area + num_rooms,
+  data = house_train %>% top_n(number_of_observations),
+  kernel = "radial",
+  ranges = list(cost = cost_range),
+  scale = TRUE)
+
+svm.models <- svm.models$best.model
+summary(svm.models)
+
+
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ living_area)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot(x = svm.models, data = house_train %>% top_n(number_of_observations), formula = price.log ~ num_rooms)
+
+```
+
+```{r}
+
+table(predict = predict(svm.models, house_train),truth = house_train$object_type_name)
+```
+
+
+
+## Conclusion 
+
+We see that the SVM using the sigmoid kernel has the best classification rate.
+The other SVMs using the linear and radial kernel could not provide a sufficient separation layer
+
+It is not possible to differentiate clearly between an apartment and a single-family house.
+Therefore, the SVM is not suitable for classification in this case.
+This can be clearly seen from the fact that the data points in the graphs clearly overlap. 
+The SVM can therefore not make a proper separation of the two classes.
+
+\pagebreak
+
+# Neural Network 
+
+The idea behind neural networks is the attempt to imitate the human brain. 
+The neural network is built on three units:
+- A set of inputs consisting of information and its bias
+- A summing function, that considers the inputs in an aggregated form
+- A single ouput, which is decided by the activation function and the summing output. 
+
+In this section we will use a classifier neural network to distinguish between the object types "Wohnung" and "Einfamilienhaus" by using the input living_area, log_price, population_in_hectare 
+
+
+## Preparation oif the data
+
+First we prepare the data by chosing the right data format. Furthermore the data ist reduced by limiting it to only entries with four rooms and the object types "Wohnung" and "Einfamilienhaus". The final dataset is splitted into a training and test dataset in the ratio 1:1. 
+
+```{r warning=FALSE}
+library(neuralnet)
+
+# Save the data as a topic specific dataset
+house_data.network<-house_data
+
+# Change num_rooms from factor to numeric
+house_data.network$num_rooms<-as.numeric(paste(house_data.network$num_rooms))
+
+# Reduced the data to only entries with 4 rooms and the object types "Wohnung" and "Einfamilienhaus"
+
+house_data.network<-house_data.network %>%
+  filter(num_rooms ==4)%>%
+  filter(object_type_name=="Wohnung"|object_type_name=="Einfamilienhaus")
+
+# Adjust levels from four to only two as intended
+house_data.network$object_type_name<-as.character(house_data.network$object_type_name)
+house_data.network$object_type_name<-as.factor(house_data.network$object_type_name)
+
+# Add a column with the logged prize
+house_data.network$log_price<-log(house_data.network$price)
+
+# Set seed for reproducible results 
+
+set.seed(1)
+
+# Split the data into a train and test set
+
+index <- sample(1:nrow(house_data.network),round(0.5*nrow(house_data.network)))
+house_data.network.train <- house_data.network[index,]
+house_data.network.test <- house_data.network[-index,]
+```
+
+
+## Build a neural network with two hidden layer and measure its performance
+
+First we build a neural network with two hidden layers. Each of the layers consist of three neurons. We tried different combinations and this is one, is of the few approaches, that resulted in a working model. When we used less than 3 neurons, no classification was possible. On the otherhand a multilayer appproach with more than 3 neurons, couldn't be processed by R in a reasonable time. We choose the feed-forward approach to keep the complexity of the approach on a reasonable level. For the classification it's important to choose linear.output = FALSE. If a regression neural network should be built you need to choose linear.output = TRUE. 
+
+
+```{r}
+nn2 <- neuralnet( object_type_name~ living_area +log_price+population_in_hectare,
+                  hidden = c(3,3), data = house_data.network.train, 
+                  linear.output = FALSE,stepmax = 1e+8)
+summary(nn2)
+
+plot(nn2, rep = "best")
+```
+
+The model has been produced sucessfully. It needed 22753 steps to find the best model. The next step is to use the model to make predictions with the test data. 
+
+```{r}
+# Make the prediction
+prediction_nn2 <- predict(nn2,house_data.network.test)
+
+prediction_nn2<-prediction_nn2 %>% 
+  as_tibble(.name_repair = ~ c("Prob_Wohnung", "Prob_Einfamilienhaus"))
+
+# Chose the object with the highest probability for each row and save it in a new column.
+
+predict<-1
+
+for(i in 1:length(prediction_nn2$Prob_Wohnung)){
+  predict[i]<-if (prediction_nn2$Prob_Wohnung[i]>prediction_nn2$Prob_Einfamilienhaus[i]) {
+    "Wohnung"
+  } else {
+    "Einfamilienhaus"
+  }
+}
+
+prediction_nn2$prediction<-predict
+
+# Show the performance of the neural network model as a table (fit/obs) 
+
+d.obs <- data.frame(obs = house_data.network.test$object_type_name,
+fitted = prediction_nn2$prediction)
+
+table(d.obs$obs)
+
+table(obs = d.obs$obs,
+fit = prediction_nn2$prediction)
+
+data<-data.frame(obs = d.obs$obs,
+fit = prediction_nn2$prediction)
+
+```
+
+As we see in the table, there were 491 "Einfamilienhaus" and 1052 "Wohnung" entries to be classified. Our model predicted 316 "Einfamilienhaus" correctly and only 85 "Wohnung" correctly. So this model is not really saitsfying. Lets try another neural network model with less hidden layers. 
+
+
+## Build a neural network with one hidden layer and measure its performance
+
+This time we just use only one hidden layer to build our neural network model. 
+
+```{r}
+nn <- neuralnet( object_type_name~ living_area +log_price+population_in_hectare,
+                 hidden = c(3), data = house_data.network.train, 
+                 linear.output = FALSE,stepmax = 1e+8)
+summary(nn)
+
+plot(nn, rep = "best")
+```
+
+The model has been produced sucessfully. It needed 217408 steps to find the best model. The next step is again to use the model to make predictions with the test data. 
+
+```{r}
+# Make the prediction
+
+prediction_nn <- predict(nn,house_data.network.test)
+prediction_nn<-prediction_nn %>% 
+  as_tibble(.name_repair = ~ c("Prob_Wohnung", "Prob_Einfamilienhaus"))
+
+# Chose the object with the highest probability for each row and save it in a new column. 
+
+predict<-1
+
+for(i in 1:length(prediction_nn$Prob_Wohnung)){
+  predict[i]<-if (prediction_nn$Prob_Wohnung[i]>prediction_nn$Prob_Einfamilienhaus[i]) {
+    "Wohnung"
+  } else {
+    "Einfamilienhaus"
+  }
+}
+
+prediction_nn$prediction<-predict
+
+# Show the performance of the neural network model as a table (fit/obs)
+
+d.obs <- data.frame(obs = house_data.network.test$object_type_name,
+fitted = prediction_nn$prediction)
+
+table(d.obs$obs)
+
+table(obs = d.obs$obs,
+fit = prediction_nn$prediction)
+
+data<-data.frame(obs = d.obs$obs,
+fit = prediction_nn$prediction)
+
+```
+
+As we see in the table, there were 491 "Einfamilienhaus" and 1052 "Wohnung" entries to be classified. Our model predicted 297 "Einfamilienhaus" correctly and only 96 "Wohnung" correctly. So this model is not really satisfying aswell. It classifies a little worse than the more complex one. 
+
+Overall it seems, that used approach and data can't be used to distinguish properly between the two object types. The next step would be to add more variables to the moddeling process, add more layers or allows backpropagation. Otherwise an approach like Support Vector Machine can be tested as desribed earlier in this project report. 
+
+\pagebreak
+
+# Conclusion
+
+We developed at least one working model for each chapter from the lessons. It doesn't make sense to compare all of them, because they vary in used variables, have individuals limitiation (e.g time restriction, computing power) and are sometimes only suitable for special cases like the count data in the Generalised Linear Models chapter. Overall we had to learn, that real data can be hard to model and the computional limitation with more sophisticated approaches like heural networks can be very frustrating. 
